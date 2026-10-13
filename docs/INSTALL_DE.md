@@ -17,7 +17,7 @@ Tatsächliche Ladepausen können weiterhin auftreten.
 4. KH2 als PC-Spiel auswählen, Mod aktivieren und Mods bauen/anwenden.
 5. Unter `mod/kh2/dll` muss `KH2AssetSizeCache.dll` liegen. Nur eine Fassung
    dieses Add-ons und keinen zusätzlichen Riku-Größen-Cache dort laden.
-6. Die bestehende Panacea-`version.dll` beibehalten und das Spiel neu starten.
+6. Die bestehende Panacea-DLL (`version.dll`, `dbghelp.dll` oder `dinput8.dll`) beibehalten und das Spiel neu starten.
 
 Die ZIP enthält die fertige DLL und den vollständigen Projektinhalt für das
 spätere Repository. Quellcode und CI-Dateien müssen zum Spielen nicht gebaut werden.
@@ -27,7 +27,7 @@ spätere Repository. Quellcode und CI-Dateien müssen zum Spielen nicht gebaut w
 Nach dem Entfernen des Riku-Fixes `KH2AssetSizeCache.dll` aus der ZIP nach
 `mod/kh2/dll` kopieren. Das Spiel muss dabei beendet sein. Ein späterer OpenKH-
 Mod-Build kann manuell kopierte Dateien entfernen; für dauerhafte Installation
-bevorzugt den lokalen ZIP-Mod verwenden. Die DLL niemals in `version.dll` umbenennen.
+bevorzugt den lokalen ZIP-Mod verwenden. Das Add-on muss weiterhin `KH2AssetSizeCache.dll` heißen.
 
 ## Prüfung
 
@@ -83,3 +83,22 @@ Der zusätzliche Pfad-Cache merkt sich bestätigte fehlende Dateien/Pfade für
 fünf Sekunden. Neu angelegte Dateien können entsprechend verzögert erkannt
 werden; Mods nur bei geschlossenem Spiel bauen oder wechseln. Die Ablaufzeiten
 bleiben für den Vergleich unverändert. Weitere Details: [Pfad-Cache](NEGATIVE_PATHS.md).
+
+## Panacea-Dateiname
+
+Unterstützt werden bereits geladene `version.dll`, `dbghelp.dll` und `dinput8.dll`,
+auch mit anderer Groß-/Kleinschreibung wie `DBGHELP.dll`. Die Startzeile nennt
+den erkannten Namen, z. B. `panacea=dbghelp.dll`. Eine zusätzlich geladene
+System-DLL wird nicht als Panacea akzeptiert. Bei mehreren passenden Panacea-
+Modulen wird vorsichtshalber nichts gepatcht.
+
+Zum Testen die neue Add-on-DLL bei beendetem Spiel ersetzen und deine bereits
+funktionierende Panacea-Konfiguration beibehalten. Nach dem Start müssen
+`INSTALLED:`, der erwartete `panacea=...`-Name und bei unterstütztem Pfad-Profil
+`path_cache=ACTIVE` erscheinen. Kurz Raumwechsel, Gegner-Spawns und Rikus Session
+prüfen; die Logdatei muss bei einer Zeile bleiben. Danach
+`KH2AssetSizeCache.log` und das Ergebnis schicken; bei Abstürzen zusätzlich den
+Proton-Log. Für den Test ist kein Umbenennen einer funktionierenden Panacea nötig.
+
+Rollback: Spiel schließen und die vorherige Add-on-DLL bzw. das vorige Paket
+wiederherstellen. Panacea selbst bleibt unverändert.

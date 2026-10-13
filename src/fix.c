@@ -39,13 +39,14 @@ static SizeFn previous_size;
 static InfoFn volatile *info_slot;
 static u64 game_begin,game_end;
 static u32 init_once,installed,hook_cleanup_failed;
+static const char *selected_proxy;
 static uint16_t log_path[520]={'K','H','2','A','s','s','e','t','S','i','z','e','C','a','c','h','e','.','l','o','g',0};
 static unsigned text(char *b,unsigned n,const char *s){while(*s)b[n++]=*s++;return n;}
 /* Exactly one status write per OnInit; CREATE_ALWAYS replaces the prior run.
  * Logging failure never changes whether the cache can initialize. */
 static void log_status(const char *status){
-    char b[1024];unsigned n=text(b,0,"KH2AssetSizeCache v1-path; ");
-    n=text(b,n,status);b[n++]='\r';b[n++]='\n';
+    char b[1024];unsigned n=text(b,0,"KH2AssetSizeCache v1-proxy; ");
+    n=text(b,n,status);if(selected_proxy){n=text(b,n,"; panacea=");n=text(b,n,selected_proxy);}b[n++]='\r';b[n++]='\n';
     void *f=CreateFileW(log_path,0x40000000U,3,0,2,0x80,0);
     if(f==(void *)(intptr_t)-1)return;
     const char *p=b;
@@ -179,15 +180,41 @@ static int kh2_executable(void){
     uint16_t path[520];u32 n=GetModuleFileNameW(0,path,520);if(!n||n>=520)return 0;u32 pos=n;while(pos&&path[pos-1]!='/'&&path[pos-1]!='\\')pos--;
     const char want[]="kingdom hearts ii final mix.exe";unsigned i=0;while(want[i]&&pos+i<n){if(lower(path[pos+i])!=(u8)want[i])return 0;i++;}return !want[i]&&pos+i==n;
 }
+/* GetModuleHandleW compares loaded-module names case-insensitively.
+ * Inspect all three candidates before patching; a system version.dll must not
+ * hide a matching dbghelp/dinput8 proxy. Never load a DLL just to probe it. */
+static int select_panacea(u8 *game,u8 **base,Discovery *detected){
+    static const uint16_t names[3][13]={
+        {'v','e','r','s','i','o','n','.','d','l','l',0},
+        {'d','b','g','h','e','l','p','.','d','l','l',0},
+        {'d','i','n','p','u','t','8','.','d','l','l',0},
+    };
+    static const char labels[3][13]={"version.dll","dbghelp.dll","dinput8.dll"};
+    u8 *seen[3]={0},*chosen=0;unsigned count=0,index=0;Discovery found={0};
+    *base=0;memset(detected,0,sizeof(*detected));
+    for(unsigned i=0;i<3;i++){
+        u8 *candidate=GetModuleHandleW(names[i]);if(!candidate)continue;
+        unsigned j=0;while(j<count&&seen[j]!=candidate)j++;if(j<count)continue;
+        seen[count++]=candidate;Discovery d;int result=discover_panacea(candidate,game,&d);
+        if(result<0)return -1;
+        if(result==1){if(chosen)return -2;chosen=candidate;found=d;index=i;}
+    }
+    if(!chosen)return count?0:-3;
+    *base=chosen;*detected=found;selected_proxy=labels[index];return 1;
+}
 EXPORT void OnInit(const uint16_t *folder){
     if(__atomic_exchange_n(&init_once,1,__ATOMIC_ACQ_REL))return;
     u32 error=GetLastError();set_log_path(folder);
     const char *status="DISABLED: initialization did not complete";
     if(!kh2_executable()){status="DISABLED: not the supported KH2 executable";goto done;}
-    static const uint16_t version[]={'v','e','r','s','i','o','n','.','d','l','l',0};u8 *base=GetModuleHandleW(version);
-    if(!base){status="DISABLED: Panacea version.dll is not loaded";goto done;}
-    u8 *game=GetModuleHandleW(0);Discovery detected;int result=discover_panacea(base,game,&detected);
-    if(result!=1){status=result<0?"DISABLED: ambiguous Panacea GetFileSize matches; no patch applied":"DISABLED: unsupported Panacea code/layout or uninitialized package lookup; no patch applied";goto done;}
+    u8 *game=GetModuleHandleW(0),*base=0;Discovery detected;int result=select_panacea(game,&base,&detected);
+    if(result!=1){
+        status=result==-3?"DISABLED: none of version.dll, dbghelp.dll or dinput8.dll is loaded":
+            result==-2?"DISABLED: multiple compatible Panacea modules; no patch applied":
+            result==-1?"DISABLED: ambiguous Panacea GetFileSize matches; no patch applied":
+            "DISABLED: unsupported Panacea code/layout or uninitialized package lookup; checked version.dll, dbghelp.dll, dinput8.dll; no patch applied";
+        goto done;
+    }
     Image game_image;if(!image_view(game,&game_image)){status="DISABLED: invalid KH2 image layout";goto done;}
     game_begin=(u64)game;game_end=game_begin+game_image.size;info_slot=detected.info;
     void *pin=0;if(!GetModuleHandleExW(5,(const uint16_t *)(uintptr_t)OnInit,&pin)||!GetModuleHandleExW(5,(const uint16_t *)base,&pin)){status="DISABLED: module lifetime pin failed";goto done;}

@@ -1,7 +1,7 @@
 # Build and validate
 
 Repository: [BeZide93/kh2-asset-size-cache](https://github.com/BeZide93/kh2-asset-size-cache).
-The root DLL is ready for OpenKH installation. `packages/KH2-Asset-Size-Cache-v1-path.zip`
+The root DLL is ready for OpenKH installation. `packages/KH2-Asset-Size-Cache-v1-proxy.zip`
 contains the complete source layout and also works as a local OpenKH mod.
 
 ## Linux build
@@ -34,7 +34,7 @@ build/path_hooks KH2AssetSizeCache.dll /absolute/path/to/original/version.dll
 ```
 
 `build.py` checks the DLL and creates `BUILD-MANIFEST.json`, `PE-EXPORTS.txt` and
-the test header. Packaging creates `dist/KH2-Asset-Size-Cache-v1-path.zip` with the full
+the test header. Packaging creates `dist/KH2-Asset-Size-Cache-v1-proxy.zip` with the full
 source/repository layout and OpenKH manifest, plus `dist/SHA256SUMS.txt`.
 Generated build files, PDBs and import libraries are excluded from the ZIP.
 
@@ -55,3 +55,7 @@ Unused PDB metadata is stripped so builds do not depend on the checkout path.
 The PE check rejects logging-worker and diagnostic timing imports in this build.
 Path-cache tests execute the compiled cache and all five indirect calls, including
 expiry, LastError, concurrent fallback invalidation and transaction rollback.
+
+Discovery tests also cover the three supported proxy names, case-insensitive
+loader matching, coexisting unrelated system modules, duplicate handles and
+refusal of multiple compatible modules before any patch.

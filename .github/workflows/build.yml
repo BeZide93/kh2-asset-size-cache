@@ -53,7 +53,7 @@ jobs:
           name: KH2-Asset-Size-Cache
           if-no-files-found: error
           path: |
-            dist/KH2-Asset-Size-Cache-v1-path.zip
+            dist/KH2-Asset-Size-Cache-v1-proxy.zip
             dist/SHA256SUMS.txt
             KH2AssetSizeCache.dll
             BUILD-MANIFEST.json

@@ -109,8 +109,47 @@ static void test_status(const char *dll){
     }
     fresh(dll);panacea=NULL;fakegame=NULL;
     ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
-    assert(creates==1&&strstr(logtext,"Panacea version.dll is not loaded")&&last_error==321);
+    assert(creates==1&&strstr(logtext,"none of version.dll, dbghelp.dll or dinput8.dll is loaded")&&last_error==321);
     puts("PASS: one startup line replaces old logs; duplicate init is silent; missing/incompatible Panacea and initialization failures report status; open/write failures preserve cache installation and LastError; short writes complete.");
 }
 
-int main(int argc,char **argv){assert(argc==2);test_recognition(argv[1]);test_status(argv[1]);munmap(im,IMAGE_SIZE);puts("LIMIT: synthetic layout variants are not independently released Panacea builds or a Proton/game test.");return 0;}
+static void test_proxy_names(const char *dll){
+    const char *names[]={"version.dll","VERSION.DLL","dbghelp.dll","DBGHELP.dll","dinput8.dll","DINPUT8.DLL"};
+    for(unsigned i=0;i<6;i++){
+        fresh(dll);prepare(0x2000,0);vp_calls=flush_calls=addcalls=delcalls=0;page=NULL;
+        u8 *ordinary=synthetic_image();u8 before[0xc000];memcpy(before,ordinary,sizeof(before));
+        proxy_map=1;proxy_names[0]=names[i];proxy_modules[0]=panacea;
+        /* A non-Panacea version module may coexist with either other proxy. */
+        proxy_names[1]=i>=2?"version.dll":"dbghelp.dll";proxy_modules[1]=ordinary;
+        ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
+        const char *expected=i<2?"panacea=version.dll":i<4?"panacea=dbghelp.dll":"panacea=dinput8.dll";
+        assert(strstr(logtext,"INSTALLED:")&&strstr(logtext,expected)&&last_error==321);
+        assert(panacea[0x2000]==0xff&&!memcmp(before,ordinary,sizeof(before))&&creates==1&&pins==2);
+        assert(strchr(logtext,'\n')==logtext+loglen-1);unsigned opens=creates;
+        ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);assert(creates==opens);
+        munmap(page,4096);page=NULL;munmap(ordinary,0xc000);cleanup();
+    }
+    /* The same handle under aliases is a single candidate, not ambiguity. */
+    fresh(dll);prepare(0x2000,0);vp_calls=flush_calls=0;page=NULL;proxy_map=1;
+    proxy_names[0]="version.dll";proxy_names[1]="DBGHELP.dll";proxy_names[2]="dinput8.dll";
+    for(unsigned i=0;i<3;i++)proxy_modules[i]=panacea;
+    ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
+    assert(strstr(logtext,"INSTALLED:")&&pins==2);munmap(page,4096);page=NULL;cleanup();
+    /* Two distinct compatible modules must be refused before either changes. */
+    fresh(dll);prepare(0x2000,0);u8 *other=synthetic_image();memcpy(other,panacea,0xc000);
+    proxy_map=1;proxy_names[0]="version.dll";proxy_names[1]="dbghelp.dll";proxy_modules[0]=panacea;proxy_modules[1]=other;
+    u8 before[0xc000];memcpy(before,panacea,sizeof(before));
+    ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
+    assert(strstr(logtext,"multiple compatible Panacea")&&!pins&&creates==1&&last_error==321);
+    assert(!memcmp(before,panacea,sizeof(before))&&!memcmp(before,other,sizeof(before)));
+    munmap(other,0xc000);cleanup();
+    /* Unsupported modules under every name are not patched. */
+    fresh(dll);prepare(0x2000,0);panacea[0x2015]^=1;proxy_map=1;
+    proxy_names[0]="DBGHELP.dll";proxy_modules[0]=panacea;memcpy(before,panacea,sizeof(before));
+    ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
+    assert(strstr(logtext,"DISABLED: unsupported")&&!pins&&!memcmp(before,panacea,sizeof(before)));
+    cleanup();
+    puts("PASS compiled OnInit: three proxy names and mixed/uppercase loader matching; coexisting system module unchanged; repeated handle deduplication; multiple compatible modules refused before writes; unsupported renamed modules refused; one startup line and LastError preserved.");
+}
+
+int main(int argc,char **argv){assert(argc==2);test_recognition(argv[1]);test_status(argv[1]);test_proxy_names(argv[1]);munmap(im,IMAGE_SIZE);puts("LIMIT: synthetic layout variants are not independently released Panacea builds or a Proton/game test.");return 0;}

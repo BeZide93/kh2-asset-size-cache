@@ -30,20 +30,25 @@ loads and graphics-related stalls may remain.
    `mod/kh2/dll` folder; keep a backup outside the loader folders.
 2. In OpenKH Mod Manager, select **KH2 / PC** and install
    **`BeZide93/kh2-asset-size-cache`** from GitHub. Enable it and build/apply
-   your mods. Alternatively import the [complete ZIP](packages/KH2-Asset-Size-Cache-v1-path.zip)
+   your mods. Alternatively import the [complete ZIP](packages/KH2-Asset-Size-Cache-v1-proxy.zip)
    as a local mod. The ready-to-use DLL is included; no compilation is needed.
 3. Alternatively copy `KH2AssetSizeCache.dll` directly into `mod/kh2/dll` after
-   building your mods. Keep your existing Panacea `version.dll`.
+   building your mods. Keep your existing Panacea proxy (`version.dll`, `dbghelp.dll` or `dinput8.dll`).
 4. Restart the game. `KH2AssetSizeCache.log` beside the DLL should show
    one `INSTALLED:` line with `path_cache=ACTIVE`, or `DISABLED:` with a reason.
    `INSTALLED: ... path_cache=DISABLED (...)` means only the size cache is active.
    Each new game process replaces the previous log. No periodic logging or logging
    worker runs. If Panacea never loads/calls this DLL, it cannot update the log.
 
-Run only one size-cache add-on. Do not rename this DLL to `version.dll`.
+Run only one size-cache add-on. Keep this add-on named `KH2AssetSizeCache.dll`.
 See [German installation and rollback](docs/INSTALL_DE.md).
 
 ## Compatibility and validation
+
+Already loaded `version.dll`, `dbghelp.dll` and `dinput8.dll` modules are checked
+case-insensitively (including `DBGHELP.dll`). Only a unique compatible Panacea
+module is selected; ordinary system DLLs are ignored. The startup line includes
+`panacea=<name>`. This does not load, rename or replace your Panacea proxy.
 
 Compatible Panacea functions are detected automatically, without fixed build
 addresses. Unknown or ambiguous size implementations disable the add-on. The
