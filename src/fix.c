@@ -44,7 +44,7 @@ static unsigned text(char *b,unsigned n,const char *s){while(*s)b[n++]=*s++;retu
 /* Exactly one status write per OnInit; CREATE_ALWAYS replaces the prior run.
  * Logging failure never changes whether the cache can initialize. */
 static void log_status(const char *status){
-    char b[1024];unsigned n=text(b,0,"KH2AssetSizeCache v1-startup; ");
+    char b[1024];unsigned n=text(b,0,"KH2AssetSizeCache v1-path; ");
     n=text(b,n,status);b[n++]='\r';b[n++]='\n';
     void *f=CreateFileW(log_path,0x40000000U,3,0,2,0x80,0);
     if(f==(void *)(intptr_t)-1)return;
@@ -72,6 +72,7 @@ static u64 generation,candidates,hits,refreshes,bypasses,contention,no_package,i
 static u32 fallback_active;
 #define INC(x) __atomic_fetch_add(&(x),1,__ATOMIC_ACQ_REL)
 #define READ(x) __atomic_load_n(&(x),__ATOMIC_ACQUIRE)
+#include "path_cache.h"
 static int lock_cache(void){return !__atomic_exchange_n(&cache.lock,1,__ATOMIC_ACQUIRE);}
 static void unlock_cache(void){__atomic_store_n(&cache.lock,0,__ATOMIC_RELEASE);}
 static unsigned lower(unsigned c){if(c>='A'&&c<='Z')c+=32;if(c=='\\')c='/';return c;}
@@ -190,8 +191,16 @@ EXPORT void OnInit(const uint16_t *folder){
     Image game_image;if(!image_view(game,&game_image)){status="DISABLED: invalid KH2 image layout";goto done;}
     game_begin=(u64)game;game_end=game_begin+game_image.size;info_slot=detected.info;
     void *pin=0;if(!GetModuleHandleExW(5,(const uint16_t *)(uintptr_t)OnInit,&pin)||!GetModuleHandleExW(5,(const uint16_t *)base,&pin)){status="DISABLED: module lifetime pin failed";goto done;}
+    int path_ready=path_profile_ok(base,detected.size_fn);
     if(!install_hook(detected.size_fn)){status=hook_cleanup_failed?"DISABLED: hook installation failed; original entry retained/restored; inactive trampoline retained because unwind removal failed":"DISABLED: trampoline installation failed; original entry retained/restored";goto done;}
-    installed=1;status="INSTALLED: size cache initialized; slots=256; TTL=1000 ms; package lookup retained";
+    installed=1;
+    if(!path_ready)status="INSTALLED: size cache; TTL=1000 ms; path_cache=DISABLED (unsupported Panacea path profile)";
+    else {
+        int path_result=path_install(base);
+        status=path_result==1?"INSTALLED: size cache; TTL=1000 ms; path_cache=ACTIVE; entries=1024; path_TTL=5000 ms":
+            path_result<0?"INSTALLED: size cache; TTL=1000 ms; path_cache=DISABLED (call-site installation failed; relay retained for safe forwarding)":
+            "INSTALLED: size cache; TTL=1000 ms; path_cache=DISABLED (call-site setup failed)";
+    }
  done:log_status(status);SetLastError(error);
 }
 int DllMain(void *module,u32 reason,void *reserved){(void)reserved;if(reason==1)DisableThreadLibraryCalls(module);return 1;}

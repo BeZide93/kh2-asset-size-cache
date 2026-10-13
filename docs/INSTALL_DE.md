@@ -32,7 +32,9 @@ bevorzugt den lokalen ZIP-Mod verwenden. Die DLL niemals in `version.dll` umbene
 ## Prüfung
 
 `KH2AssetSizeCache.log` neben der DLL enthält genau eine Statuszeile:
-`INSTALLED:` bestätigt den aktiven Größen-Cache; `DISABLED:` nennt den Grund,
+`INSTALLED:` bestätigt den aktiven Größen-Cache. Zusätzlich muss für diesen Test
+`path_cache=ACTIVE` erscheinen. Bei `path_cache=DISABLED (...)` läuft nur der
+Größen-Cache; die Klammer nennt den Grund. `DISABLED:` am Anfang nennt den Grund,
 warum er nicht aktiviert wurde, beispielsweise eine inkompatible Panacea-DLL.
 Bei jedem neuen Spielstart ersetzt die Initialisierung den bisherigen Inhalt.
 Während des Spielens werden keine weiteren Zeilen geschrieben und es läuft
@@ -42,6 +44,11 @@ Wird die DLL gar nicht geladen oder `OnInit` nicht aufgerufen, kann sie auch
 keine Logdatei aktualisieren. Ein alter Eintrag ist dann kein Nachweis für den
 aktuellen Start; den Änderungszeitpunkt prüfen. Bei fehlenden Schreibrechten
 kann die Statusausgabe ebenfalls ausbleiben, ohne den Cache zu deaktivieren.
+
+Für den Vergleich dieselbe Szene 30–60 Sekunden beobachten: Kommt der Ruckler
+weiterhin ungefähr alle fünf Sekunden, ist er weg oder anders stark? Danach
+dieselben Bewegungen/Kämpfe bzw. Raumwechsel wiederholen. Spielstand, Begleiter,
+Re:Fined und `version.dll` unverändert lassen.
 
 Für den Test das Spiel zweimal vollständig neu starten. Nach jedem Start muss
 die Datei erneut genau eine aktuelle Statuszeile enthalten. Mehrere Raumwechsel,
@@ -65,9 +72,14 @@ Spielstände, Assets und Panacea selbst werden durch dieses Paket nicht verände
 
 Der Cache hat 256 feste Plätze und eine maximale Gültigkeit von einer Sekunde
 pro Eintrag. Dateipfad, Paketmetadaten und Aufrufkontext werden geprüft.
-Fehlende Dateien und Fehler werden nicht gespeichert; unsichere Abfragen gehen
+Fehlgeschlagene Größenabfragen werden nicht gespeichert; unsichere Abfragen gehen
 über den ursprünglichen Ladepfad. Änderungen externer Dateien ohne passende
 Metadatenänderung werden spätestens bei Ablauf des Eintrags erneut abgefragt.
 
 Die erste Abfrage, notwendige Aktualisierungen und tatsächliche Ladevorgänge
 bleiben bestehen. Deshalb ist dies kein Versprechen, alle Standbilder zu beseitigen.
+
+Der zusätzliche Pfad-Cache merkt sich bestätigte fehlende Dateien/Pfade für
+fünf Sekunden. Neu angelegte Dateien können entsprechend verzögert erkannt
+werden; Mods nur bei geschlossenem Spiel bauen oder wechseln. Die Ablaufzeiten
+bleiben für den Vergleich unverändert. Weitere Details: [Pfad-Cache](NEGATIVE_PATHS.md).

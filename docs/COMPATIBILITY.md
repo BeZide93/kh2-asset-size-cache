@@ -84,3 +84,12 @@ performance; its log records 3,375 hits from 3,832 candidates with no capacity
 evictions or contention fallbacks. This is not exhaustive gameplay validation.
 No GPU timing, asset-content cache, asynchronous asset loading or shader cache
 is provided. A size-cache hit does not avoid the actual asset load.
+
+## Optional missing-path cache
+
+The separate negative attribute cache and its stricter five-call-site profile
+are described in [NEGATIVE_PATHS.md](NEGATIVE_PATHS.md). Its five-second validity
+is independent of the positive size cache's one-second TTL. Only confirmed
+missing paths are cached; this does not change the positive cache's rejection of
+failed sizes. The startup line reports whether both caches or only the size
+cache are installed. No diagnostic hooks or periodic logging are enabled.
