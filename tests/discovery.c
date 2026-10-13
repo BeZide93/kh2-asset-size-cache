@@ -50,8 +50,12 @@ static void test_recognition(const char *dll){
          * shifted globals/strings/callees and a different timestamp. */
         fresh(dll);vp_calls=flush_calls=addcalls=delcalls=0;page=NULL;
         ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
-        assert(strstr(logtext,"INSTALLED:")&&strstr(logtext,"DETECTED:")&&panacea[rva]==0xff&&last_error==321);
+        assert(strstr(logtext,"INSTALLED:")&&strstr(logtext,"slots=256")&&panacea[rva]==0xff&&last_error==321);
         assert(*(void **)(im+RVA_info_slot)==panacea+0xa000+shift);
+        assert(creates==1&&!threadcalls&&strchr(logtext,'\n')==logtext+loglen-1);
+        unsigned opens=creates;size_t bytes=loglen;
+        ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
+        assert(creates==opens&&loglen==bytes);
         assert(!munmap(page,4096));page=NULL;cleanup();
     }
     puts("PASS actual PE discovery/OnInit: moved function, data slot, callees and strings; arbitrary timestamps; no export RVAs; unchanged scanning input and correct installed target.");
@@ -75,8 +79,38 @@ static void test_recognition(const char *dll){
         int ok=discover(&d);assert(ok==(bad==11?-1:0)&&!d.size_fn&&!d.info);
         ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
         assert(strstr(logtext,"DISABLED:")&&!pins&&!threadcalls&&!memcmp(before,panacea,0xc000));
-        free(before);cleanup();
+        assert(creates==1&&strchr(logtext,'\n')==logtext+loglen-1);free(before);cleanup();
     }
     puts("PASS actual PE: opcode/layout/import/string/unwind mutations, invalid pointers/tables, writable code and ambiguous matches fail closed without any patch.");
 }
-int main(int argc,char **argv){assert(argc==2);test_recognition(argv[1]);munmap(im,IMAGE_SIZE);puts("LIMIT: synthetic layout variants are not independently released Panacea builds or a Proton/game test.");return 0;}
+static void test_status(const char *dll){
+    /* An old multi-line file must be replaced on each independent load,
+     * including refusal; a second OnInit in the same load is a no-op. */
+    for(unsigned mode=0;mode<7;mode++){
+        fresh(dll);prepare(0x2000,0);vp_calls=flush_calls=addcalls=delcalls=0;page=NULL;
+        strcpy(logtext,"OLD RUN\nOLD STATS\n");loglen=strlen(logtext);
+        u8 saved[20];memcpy(saved,panacea+0x2000,20);
+        if(mode==1)panacea[0x2015]^=1;
+        if(mode==2)fail_mode=8;
+        if(mode==3)fail_mode=10; /* file cannot be opened */
+        if(mode==4)fail_mode=11; /* write fails */
+        if(mode==5)fail_mode=12; /* short writes */
+        if(mode==6)fail_mode=5; /* hook transaction fails */
+        ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
+        assert(creates==1&&!threadcalls&&last_error==321);
+        if(mode==3)assert(strstr(logtext,"OLD STATS"));
+        else if(mode==4)assert(loglen==0);
+        else assert(!strstr(logtext,"OLD")&&strchr(logtext,'\n')==logtext+loglen-1&&strstr(logtext,(mode==1||mode==2||mode==6)?"DISABLED:":"INSTALLED:"));
+        if(mode==1||mode==2||mode==6)assert(!memcmp(saved,panacea+0x2000,20));
+        else assert(panacea[0x2000]==0xff); /* log failures cannot disable cache */
+        size_t bytes=loglen;((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
+        assert(creates==1&&loglen==bytes);
+        if(page){assert(!munmap(page,4096));page=NULL;}cleanup();
+    }
+    fresh(dll);panacea=NULL;fakegame=NULL;
+    ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
+    assert(creates==1&&strstr(logtext,"Panacea version.dll is not loaded")&&last_error==321);
+    puts("PASS: one startup line replaces old logs; duplicate init is silent; missing/incompatible Panacea and initialization failures report status; open/write failures preserve cache installation and LastError; short writes complete.");
+}
+
+int main(int argc,char **argv){assert(argc==2);test_recognition(argv[1]);test_status(argv[1]);munmap(im,IMAGE_SIZE);puts("LIMIT: synthetic layout variants are not independently released Panacea builds or a Proton/game test.");return 0;}

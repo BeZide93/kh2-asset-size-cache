@@ -5,7 +5,7 @@ R=pathlib.Path(__file__).resolve().parent;B=R/'build';B.mkdir(exist_ok=True)
 def run(*a):return subprocess.check_output([str(x) for x in a],text=True)
 flags=['-target','x86_64-windows-gnu','-O2','-g0','-ffreestanding','-fno-builtin','-fno-stack-protector','-mno-stack-arg-probe','-funwind-tables']
 for src,obj in [('fix.c','fix.o'),('hde/hde64.c','hde64.o')]:run(sys.executable,'-m','ziglang','cc',*flags,'-c',R/'src'/src,'-o',B/obj)
-run(sys.executable,'-m','ziglang','cc','-target','x86_64-windows-gnu','-shared','-nostdlib','-Wl,--entry,DllMain',B/'fix.o',B/'hde64.o','-lkernel32','-o',R/'KH2AssetSizeCache.dll')
+run(sys.executable,'-m','ziglang','cc','-target','x86_64-windows-gnu','-shared','-nostdlib','-Wl,--entry,DllMain','-Wl,--strip-debug',B/'fix.o',B/'hde64.o','-lkernel32','-o',R/'KH2AssetSizeCache.dll')
 f=R/'KH2AssetSizeCache.dll'
 data=bytearray(f.read_bytes());p=pefile.PE(data=bytes(data))
 # Zig's PE linker inserts wall-clock timestamps in COFF/debug metadata.
@@ -23,6 +23,7 @@ assert p.FILE_HEADER.Characteristics&0x2000 and not p.get_warnings()
 assert p.OPTIONAL_HEADER.CheckSum==p.generate_checksum()
 assert [(e.name,e.ordinal) for e in p.DIRECTORY_ENTRY_EXPORT.symbols]==[(b'OnInit',1)]
 assert [d.dll.lower() for d in p.DIRECTORY_ENTRY_IMPORT]==[b'kernel32.dll']
+assert not ({e.name for d in p.DIRECTORY_ENTRY_IMPORT for e in d.imports} & {b'CreateThread',b'Sleep'})
 assert all(not (s.Characteristics&0x20000000 and s.Characteristics&0x80000000) for s in p.sections)
 # Actual helper function/data addresses are recovered from linked COFF relocations.
 # No hand-maintained final DLL RVAs in tests.
@@ -57,6 +58,7 @@ for d in p.DIRECTORY_ENTRY_IMPORT:
 for n in ['OnInit','DllMain','discover_panacea','cached_size','install_hook','previous_size','info_slot','game_begin','game_end','cache','generation','hits','refreshes','candidates','contention','no_package','invalid_size','evicted','fallback_active']:h+=f'#define RVA_{n} {addresses[n]}\n'
 # Currently all compiled code/data is PC-relative or zero-initialized.
 assert not p.OPTIONAL_HEADER.DATA_DIRECTORY[5].Size
+assert not p.OPTIONAL_HEADER.DATA_DIRECTORY[6].Size
 (B/'generated.h').write_text(h)
 man={'file':f.name,'sha256':hashlib.sha256(data).hexdigest(),'size':len(data),'exports':['OnInit'],'imports':['KERNEL32.dll'],'entry':hex(p.OPTIONAL_HEADER.AddressOfEntryPoint),'symbols':addresses,'runtime_functions':len(p.DIRECTORY_ENTRY_EXCEPTION),'game_tested':False}
 (R/'BUILD-MANIFEST.json').write_text(json.dumps(man,indent=2)+'\n')
