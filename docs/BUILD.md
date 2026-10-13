@@ -1,7 +1,7 @@
 # Build and validate
 
 Repository: [BeZide93/kh2-asset-size-cache](https://github.com/BeZide93/kh2-asset-size-cache).
-The root DLL is ready for OpenKH installation. `packages/KH2-Asset-Size-Cache-v1.zip`
+The root DLL is ready for OpenKH installation. `packages/KH2-Asset-Size-Cache-v1-startup.zip`
 contains the complete source layout and also works as a local OpenKH mod.
 
 ## Linux build
@@ -29,14 +29,15 @@ build/harness KH2AssetSizeCache.dll /absolute/path/to/original/version.dll
 ```
 
 `build.py` checks the DLL and creates `BUILD-MANIFEST.json`, `PE-EXPORTS.txt` and
-the test header. Packaging creates `dist/KH2-Asset-Size-Cache-v1.zip` with the full
+the test header. Packaging creates `dist/KH2-Asset-Size-Cache-v1-startup.zip` with the full
 source/repository layout and OpenKH manifest, plus `dist/SHA256SUMS.txt`.
 Generated build files, PDBs and import libraries are excluded from the ZIP.
 
 ## GitHub Actions
 
 The workflow runs on pushes, pull requests and manual requests. It builds the
-DLL, runs the compiled-code tests, checks repeat-build reproducibility, packages
+DLL, verifies it matches the committed DLL, runs the compiled-code tests (including
+startup log replacement and failure cases), checks repeat-build reproducibility, packages
 the complete project and publishes a workflow artifact named
 `KH2-Asset-Size-Cache`. No secrets, repository writes or releases are required.
 
@@ -44,3 +45,6 @@ After changing the code or documentation, rebuild and test, then regenerate the
 ZIP and copy it from `dist` to `packages`. Keep the committed DLL synchronized
 with the source. Update the root `SHA256SUMS.txt` for the repository files and
 package. Build directories, PDBs and import libraries must not be committed.
+
+Unused PDB metadata is stripped so builds do not depend on the checkout path.
+The PE check also rejects `CreateThread`/`Sleep` imports in this startup-only build.

@@ -27,8 +27,6 @@ IMP void SetLastError(u32);
 IMP u64 GetTickCount64(void);
 IMP u32 GetCurrentThreadId(void);
 IMP int DisableThreadLibraryCalls(void *);
-IMP void Sleep(u32);
-IMP void *CreateThread(void *,size_t,u32 (*)(void *),void *,u32,u32 *);
 void *memset(void *v,int c,size_t n){u8 *p=v;for(size_t i=0;i<n;i++)p[i]=(u8)c;return v;}
 void *memcpy(void *d,const void *s,size_t n){u8 *a=d;const u8 *b=s;for(size_t i=0;i<n;i++)a[i]=b[i];return d;}
 static void copy(void *d,const void *s,size_t n){memcpy(d,s,n);}
@@ -40,12 +38,20 @@ typedef void *(*InfoFn)(const char *,const char *);
 static SizeFn previous_size;
 static InfoFn volatile *info_slot;
 static u64 game_begin,game_end;
-static u32 init_once,installed;
+static u32 init_once,installed,hook_cleanup_failed;
 static uint16_t log_path[520]={'K','H','2','A','s','s','e','t','S','i','z','e','C','a','c','h','e','.','l','o','g',0};
 static unsigned text(char *b,unsigned n,const char *s){while(*s)b[n++]=*s++;return n;}
-static unsigned number(char *b,unsigned n,u64 v){char tmp[24];unsigned k=0;do{tmp[k++]=(char)('0'+v%10);v/=10;}while(v);while(k)b[n++]=tmp[--k];return n;}
-static void log_buffer(const char *b,u32 n){void *f=CreateFileW(log_path,4,3,0,4,0x80,0);if(f==(void *)(intptr_t)-1)return;while(n){u32 w=0;if(!WriteFile(f,b,n,&w,0)||!w||w>n)break;n-=w;b+=w;}CloseHandle(f);}
-static void log_line(const char *s){char b[1024];unsigned n=text(b,0,s);b[n++]='\r';b[n++]='\n';log_buffer(b,n);}
+/* Exactly one status write per OnInit; CREATE_ALWAYS replaces the prior run.
+ * Logging failure never changes whether the cache can initialize. */
+static void log_status(const char *status){
+    char b[1024];unsigned n=text(b,0,"KH2AssetSizeCache v1-startup; ");
+    n=text(b,n,status);b[n++]='\r';b[n++]='\n';
+    void *f=CreateFileW(log_path,0x40000000U,3,0,2,0x80,0);
+    if(f==(void *)(intptr_t)-1)return;
+    const char *p=b;
+    while(n){u32 w=0;if(!WriteFile(f,p,n,&w,0)||!w||w>n)break;n-=w;p+=w;}
+    CloseHandle(f);
+}
 static void set_log_path(const uint16_t *folder){if(!folder)return;unsigned n=0;while(folder[n]&&n<460)n++;if(n==460)return;copy(log_path,folder,n*2);static const uint16_t end[]={'\\','d','l','l','\\','K','H','2','A','s','s','e','t','S','i','z','e','C','a','c','h','e','.','l','o','g',0};copy(log_path+n,end,sizeof(end));}
 /* Metadata is refreshed by the game's GetFileInfo on EVERY cache candidate.
  * This retains package selection, header/remastered metadata and filename side
@@ -166,29 +172,26 @@ restore:
      * the unpublished trampoline; do not leave a half-installed detour. */
     copy(target,saved,14);FlushInstructionCache((void *)(intptr_t)-1,target,14);VirtualProtect(target,14,old,&ignored);
 failed:
-    previous_size=0;if(registered&&!RtlDeleteFunctionTable(rf)){log_line("WARNING: inactive trampoline retained because unwind removal failed");return 0;}VirtualFree(page,0,0x8000);return 0;
+    previous_size=0;if(registered&&!RtlDeleteFunctionTable(rf)){hook_cleanup_failed=1;return 0;}VirtualFree(page,0,0x8000);return 0;
 }
 static int kh2_executable(void){
     uint16_t path[520];u32 n=GetModuleFileNameW(0,path,520);if(!n||n>=520)return 0;u32 pos=n;while(pos&&path[pos-1]!='/'&&path[pos-1]!='\\')pos--;
     const char want[]="kingdom hearts ii final mix.exe";unsigned i=0;while(want[i]&&pos+i<n){if(lower(path[pos+i])!=(u8)want[i])return 0;i++;}return !want[i]&&pos+i==n;
 }
-static u32 stats_worker(void *unused){
-    (void)unused;for(;;){Sleep(5000);char b[768];unsigned n=0;n=text(b,n,"STATS cumulative candidates=");n=number(b,n,READ(candidates));n=text(b,n," hits=");n=number(b,n,READ(hits));n=text(b,n," refresh=");n=number(b,n,READ(refreshes));n=text(b,n," expired=");n=number(b,n,READ(expired));n=text(b,n," changed=");n=number(b,n,READ(changed));n=text(b,n," evicted=");n=number(b,n,READ(evicted));n=text(b,n," bypass=");n=number(b,n,READ(bypasses));n=text(b,n," contention=");n=number(b,n,READ(contention));n=text(b,n," no_package=");n=number(b,n,READ(no_package));n=text(b,n," nonpositive=");n=number(b,n,READ(invalid_size));b[n++]='\r';b[n++]='\n';log_buffer(b,n);}return 0;
-}
 EXPORT void OnInit(const uint16_t *folder){
     if(__atomic_exchange_n(&init_once,1,__ATOMIC_ACQ_REL))return;
-    u32 error=GetLastError();set_log_path(folder);log_line("KH2AssetSizeCache v1; auto-discovery; positive size cache; slots=256; TTL=1000 ms; all file paths up to 259 bytes; package lookup retained");
-    if(!kh2_executable()){log_line("DISABLED: not the supported KH2 executable");goto done;}
+    u32 error=GetLastError();set_log_path(folder);
+    const char *status="DISABLED: initialization did not complete";
+    if(!kh2_executable()){status="DISABLED: not the supported KH2 executable";goto done;}
     static const uint16_t version[]={'v','e','r','s','i','o','n','.','d','l','l',0};u8 *base=GetModuleHandleW(version);
+    if(!base){status="DISABLED: Panacea version.dll is not loaded";goto done;}
     u8 *game=GetModuleHandleW(0);Discovery detected;int result=discover_panacea(base,game,&detected);
-    if(result!=1){log_line(result<0?"DISABLED: ambiguous Panacea GetFileSize matches; no patch applied":"DISABLED: unsupported Panacea code/layout or uninitialized package lookup; no patch applied");goto done;}
-    Image game_image;if(!image_view(game,&game_image))goto done;
+    if(result!=1){status=result<0?"DISABLED: ambiguous Panacea GetFileSize matches; no patch applied":"DISABLED: unsupported Panacea code/layout or uninitialized package lookup; no patch applied";goto done;}
+    Image game_image;if(!image_view(game,&game_image)){status="DISABLED: invalid KH2 image layout";goto done;}
     game_begin=(u64)game;game_end=game_begin+game_image.size;info_slot=detected.info;
-    char found[192];unsigned n=text(found,0,"DETECTED: size_rva=");n=number(found,n,(u64)(detected.size_fn-base));n=text(found,n," info_slot_rva=");n=number(found,n,(u64)((u8 *)info_slot-base));n=text(found,n," profile=msvc-size-1\r\n");log_buffer(found,n);
-    void *pin=0;if(!GetModuleHandleExW(5,(const uint16_t *)(uintptr_t)OnInit,&pin)||!GetModuleHandleExW(5,(const uint16_t *)base,&pin)){log_line("DISABLED: module lifetime pin failed");goto done;}
-    if(!install_hook(detected.size_fn)){log_line("DISABLED: trampoline installation failed; original entry retained/restored");goto done;}
-    installed=1;log_line("INSTALLED: Panacea GetFileSize wrapped; package lookup retained on cache candidates");
-    void *thread=CreateThread(0,0,stats_worker,0,0,0);if(thread)CloseHandle(thread);else log_line("WARNING: stats worker unavailable; cache remains active");
-done:SetLastError(error);
+    void *pin=0;if(!GetModuleHandleExW(5,(const uint16_t *)(uintptr_t)OnInit,&pin)||!GetModuleHandleExW(5,(const uint16_t *)base,&pin)){status="DISABLED: module lifetime pin failed";goto done;}
+    if(!install_hook(detected.size_fn)){status=hook_cleanup_failed?"DISABLED: hook installation failed; original entry retained/restored; inactive trampoline retained because unwind removal failed":"DISABLED: trampoline installation failed; original entry retained/restored";goto done;}
+    installed=1;status="INSTALLED: size cache initialized; slots=256; TTL=1000 ms; package lookup retained";
+ done:log_status(status);SetLastError(error);
 }
 int DllMain(void *module,u32 reason,void *reserved){(void)reserved;if(reason==1)DisableThreadLibraryCalls(module);return 1;}

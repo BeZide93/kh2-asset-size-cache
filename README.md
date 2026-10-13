@@ -23,12 +23,14 @@ loads and graphics-related stalls may remain.
    `mod/kh2/dll` folder; keep a backup outside the loader folders.
 2. In OpenKH Mod Manager, select **KH2 / PC** and install
    **`BeZide93/kh2-asset-size-cache`** from GitHub. Enable it and build/apply
-   your mods. Alternatively import the [complete ZIP](packages/KH2-Asset-Size-Cache-v1.zip)
+   your mods. Alternatively import the [complete ZIP](packages/KH2-Asset-Size-Cache-v1-startup.zip)
    as a local mod. The ready-to-use DLL is included; no compilation is needed.
 3. Alternatively copy `KH2AssetSizeCache.dll` directly into `mod/kh2/dll` after
    building your mods. Keep your existing Panacea `version.dll`.
 4. Restart the game. `KH2AssetSizeCache.log` beside the DLL should show
-   `slots=256` and `INSTALLED:`. `DISABLED:` means no cache hook was installed.
+   one `INSTALLED:` line, or `DISABLED:` with the reason the cache could not initialize.
+   Each new game process replaces the previous log. No periodic logging or logging
+   worker runs. If Panacea never loads/calls this DLL, it cannot update the log.
 
 Run only one size-cache add-on. Do not rename this DLL to `version.dll`.
 See [German installation and rollback](docs/INSTALL_DE.md).

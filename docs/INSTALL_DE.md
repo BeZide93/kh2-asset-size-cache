@@ -31,17 +31,24 @@ bevorzugt den lokalen ZIP-Mod verwenden. Die DLL niemals in `version.dll` umbene
 
 ## Prüfung
 
-`KH2AssetSizeCache.log` entsteht neben der DLL. Die Startzeile enthält
-`slots=256`, `TTL=1000 ms`; `DETECTED:` und `INSTALLED:` bestätigen die Aktivierung.
-Bei `DISABLED:` die angegebene Ursache prüfen. Unbekannte Panacea-Implementierungen
-werden nicht gepatcht. Statistiken werden alle fünf Sekunden geschrieben;
-`candidates`, `hits`, `refresh` und `evicted` zeigen die Cache-Nutzung.
+`KH2AssetSizeCache.log` neben der DLL enthält genau eine Statuszeile:
+`INSTALLED:` bestätigt den aktiven Größen-Cache; `DISABLED:` nennt den Grund,
+warum er nicht aktiviert wurde, beispielsweise eine inkompatible Panacea-DLL.
+Bei jedem neuen Spielstart ersetzt die Initialisierung den bisherigen Inhalt.
+Während des Spielens werden keine weiteren Zeilen geschrieben und es läuft
+kein Statistik-Thread. Ein erneuter `OnInit`-Aufruf im selben Prozess bleibt ohne Wirkung.
 
-Für den Spieltest dieselben Räume mehrfach betreten und dieselben Gegner erneut
-spawnen lassen. Auch Session, Begleiterwechsel, Menüs und Raumwechsel prüfen.
-Für den Vergleich die neue Cache-Logdatei und bei vorhandener Diagnose-Panacea
-`panacea_riku_perf.log` sowie `panacea_hookfix.log` aufbewahren. Die Diagnose-
-Panacea ist keine Voraussetzung zum Spielen; sie ist in dieser ZIP nicht enthalten.
+Wird die DLL gar nicht geladen oder `OnInit` nicht aufgerufen, kann sie auch
+keine Logdatei aktualisieren. Ein alter Eintrag ist dann kein Nachweis für den
+aktuellen Start; den Änderungszeitpunkt prüfen. Bei fehlenden Schreibrechten
+kann die Statusausgabe ebenfalls ausbleiben, ohne den Cache zu deaktivieren.
+
+Für den Test das Spiel zweimal vollständig neu starten. Nach jedem Start muss
+die Datei erneut genau eine aktuelle Statuszeile enthalten. Mehrere Raumwechsel,
+Gegner-Spawns und Rikus Session testen; die Datei darf dabei nicht wachsen.
+Zur Rückmeldung genügt `KH2AssetSizeCache.log` plus die Beobachtung, ob Laden und
+Spielen normal funktionieren. Bei einem Absturz zusätzlich den Proton-Log schicken.
+Andere DLLs wie eine Diagnose-`version.dll` können unabhängig weiter protokollieren.
 
 ## Rollback
 

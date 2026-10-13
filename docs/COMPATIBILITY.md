@@ -28,8 +28,12 @@ The cache uses a nonblocking lock. Contention and unsupported requests call the
 original implementation. Epochs change before and after unlocked fallback calls;
 an active counter suppresses reuse/publication while they run. Results spanning
 an epoch change are not reused/published. The code preserves Windows LastError
-and does not perform log I/O on the request path. Statistics use a five-second
-background interval.
+and does not perform log I/O on the request path. Initialization writes one
+status line, replacing the previous log with `CREATE_ALWAYS`. There is no
+periodic logging or background worker. A second `OnInit` in the same process
+is ignored. File-open/write errors do not disable the cache; they can leave
+an old, empty or incomplete log. If the DLL is never loaded or `OnInit` is never
+called, it cannot report that failure or reset an old log.
 
 ## Automatic Panacea discovery
 
