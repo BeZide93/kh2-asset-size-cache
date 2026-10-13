@@ -1,4 +1,4 @@
-# Loading-stall diagnostics (v1-d3)
+# Loading-stall diagnostics (v1-d4)
 
 The d1 instrumentation is retained alongside the [negative-path optimization](NEGATIVE_PATHS.md). The 256-entry, one-second positive size cache stays active
 with the same validity rules. This build does not skip loads, resource
@@ -106,3 +106,7 @@ Experimental ARM64 still needs the user test above.
 
 See [d3 load details](LOAD_DETAILS.md) for the additional original-load phase,
 slow-call records and thread CPU timing limitations.
+
+The d4 [I/O diagnosis](IO_DIAGNOSTICS.md) additionally patches validated named
+import slots in the game and Panacea. The 35 existing code patch spans stay
+unchanged; I/O installation has a separate transaction and coverage report.

@@ -178,7 +178,7 @@ static u32 stats_worker(void *unused){
 }
 EXPORT void OnInit(const uint16_t *folder){
     if(__atomic_exchange_n(&init_once,1,__ATOMIC_ACQ_REL))return;
-    u32 error=GetLastError();set_log_path(folder);log_line("KH2AssetSizeCache v1-d3; auto-discovery; positive size cache; slots=256; TTL=1000 ms; all file paths up to 259 bytes; package lookup retained");
+    u32 error=GetLastError();set_log_path(folder);log_line("KH2AssetSizeCache v1-d4; auto-discovery; positive size cache; slots=256; TTL=1000 ms; all file paths up to 259 bytes; package lookup retained");
     if(!kh2_executable()){log_line("DISABLED: not the supported KH2 executable");goto done;}
     static const uint16_t version[]={'v','e','r','s','i','o','n','.','d','l','l',0};u8 *base=GetModuleHandleW(version);
     u8 *game=GetModuleHandleW(0);Discovery detected;int result=discover_panacea(base,game,&detected);
@@ -190,7 +190,7 @@ EXPORT void OnInit(const uint16_t *folder){
     int diagnostic_ready=diag_prepare(base,detected.size_fn);
     if(!install_hook(detected.size_fn)){log_line("DISABLED: trampoline installation failed; original entry retained/restored");goto done;}
     installed=1;log_line("INSTALLED: Panacea GetFileSize wrapped; package lookup retained on cache candidates");
-    if(diagnostic_ready&&diag_install()){log_line("PATHCACHE INSTALLED: negative attributes; entries=1024; TTL=5000 ms; only errors 2/3; absolute DOS paths; existing files always queried");diag_header();log_line("DETAIL INSTALLED: original LoadFile fallback and SetResourceItem; slow calls >=20 ms; current-thread CPU times");log_line("DIAG INSTALLED: LoadFile and original GetFileSize phases -> KH2AssetLoadDiag.log");}
+    if(diagnostic_ready&&diag_install()){log_line("PATHCACHE INSTALLED: negative attributes; entries=1024; TTL=5000 ms; only errors 2/3; absolute DOS paths; existing files always queried");diag_header();io_install(game,base);log_line("DETAIL INSTALLED: original LoadFile fallback and SetResourceItem; slow calls >=20 ms; current-thread CPU times");log_line("DIAG INSTALLED: LoadFile and original GetFileSize phases -> KH2AssetLoadDiag.log");}
     else log_line("DIAG DISABLED: unsupported diagnostic profile or installation failure; size cache remains active");
     void *thread=CreateThread(0,0,stats_worker,0,0,0);if(thread)CloseHandle(thread);else log_line("WARNING: stats worker unavailable; cache remains active");
 done:SetLastError(error);

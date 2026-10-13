@@ -43,6 +43,11 @@ jobs:
         run: |
           gcc -O2 -pthread -I build tests/negative_paths.c -o build/negative_paths
           build/negative_paths KH2AssetSizeCache.dll
+      - name: Execute I/O ABI, IAT rollback and correlation tests
+        run: |
+          gcc -O2 -pthread -I build tests/io_diagnostics.c -o build/io_diagnostics
+          build/io_diagnostics KH2AssetSizeCache.dll
+          python3 tests/test_analyze_io.py
       - name: Check repeat-build reproducibility
         run: |
           cp KH2AssetSizeCache.dll "$RUNNER_TEMP/first-build.dll"
@@ -55,7 +60,7 @@ jobs:
           name: KH2-Asset-Size-Cache
           if-no-files-found: error
           path: |
-            dist/KH2-Asset-Size-Cache-v1-d3.zip
+            dist/KH2-Asset-Size-Cache-v1-d4.zip
             dist/SHA256SUMS.txt
             KH2AssetSizeCache.dll
             BUILD-MANIFEST.json

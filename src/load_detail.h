@@ -32,8 +32,8 @@ static void detail_record(unsigned phase,const char *name,u64 start,u64 end,Deta
 }
 static int diag_register(const char *name,int size,void *data){
     DIAG_BEGIN;diag_name(key,name,0);DetailCPU cpu_before=detail_cpu();
-    DIAG_START;int r=((int (*)(const char *,int,void *))*diag_register_slot)(name,size,data);
-    DIAG_END;DetailCPU cpu_after=detail_cpu();
+    io_window_begin();DIAG_START;int r=((int (*)(const char *,int,void *))*diag_register_slot)(name,size,data);
+    DIAG_END;io_window_end();DetailCPU cpu_after=detail_cpu();
     detail_record(D_REGISTER,key,begin,end,cpu_before,cpu_after,r);
     DIAG_SAVE(0,D_REGISTER,r==-1,0);return r;
 }
@@ -47,8 +47,8 @@ static int diag_original_load(void *self,const char *name,void *data,u8 hd){
     void **hook=*(void **volatile *)diag_load_hook_slot;
     int (*original)(void *,const char *,void *,u8)=(void *)*hook;
     diag_name(key,name,0);DetailCPU cpu_before=detail_cpu();
-    DIAG_START;int r=original(self,name,data,hd);
-    DIAG_END;DetailCPU cpu_after=detail_cpu();
+    io_window_begin();DIAG_START;int r=original(self,name,data,hd);
+    DIAG_END;io_window_end();DetailCPU cpu_after=detail_cpu();
     detail_record(D_ORIGINAL_LOAD,key,begin,end,cpu_before,cpu_after,r);
     DIAG_SAVE(0,D_ORIGINAL_LOAD,r<=0,0);return r;
 }
