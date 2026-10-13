@@ -50,7 +50,7 @@ static void test_recognition(const char *dll){
          * shifted globals/strings/callees and a different timestamp. */
         fresh(dll);vp_calls=flush_calls=addcalls=delcalls=0;page=NULL;
         ((void(MS *)(const uint16_t *))(im+RVA_OnInit))(NULL);
-        assert(strstr(logtext,"INSTALLED:")&&strstr(logtext,"slots=256")&&panacea[rva]==0xff&&last_error==321);
+        assert(strstr(logtext,"INSTALLED:")&&strstr(logtext,"path_cache=DISABLED")&&panacea[rva]==0xff&&last_error==321);
         assert(*(void **)(im+RVA_info_slot)==panacea+0xa000+shift);
         assert(creates==1&&!threadcalls&&strchr(logtext,'\n')==logtext+loglen-1);
         unsigned opens=creates;size_t bytes=loglen;

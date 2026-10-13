@@ -35,6 +35,12 @@ jobs:
         run: |
           gcc -O2 -pthread -I build tests/discovery.c -o build/discovery
           build/discovery KH2AssetSizeCache.dll
+      - name: Execute negative-path cache and patch transaction tests
+        run: |
+          gcc -O2 -pthread -I build tests/negative_paths.c -o build/negative_paths
+          build/negative_paths KH2AssetSizeCache.dll
+          gcc -O2 -pthread -I build tests/path_hooks.c -o build/path_hooks
+          build/path_hooks KH2AssetSizeCache.dll
       - name: Check repeat-build reproducibility
         run: |
           cp KH2AssetSizeCache.dll "$RUNNER_TEMP/first-build.dll"
@@ -47,7 +53,7 @@ jobs:
           name: KH2-Asset-Size-Cache
           if-no-files-found: error
           path: |
-            dist/KH2-Asset-Size-Cache-v1-startup.zip
+            dist/KH2-Asset-Size-Cache-v1-path.zip
             dist/SHA256SUMS.txt
             KH2AssetSizeCache.dll
             BUILD-MANIFEST.json

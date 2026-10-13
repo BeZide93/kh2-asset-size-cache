@@ -23,7 +23,7 @@ assert p.FILE_HEADER.Characteristics&0x2000 and not p.get_warnings()
 assert p.OPTIONAL_HEADER.CheckSum==p.generate_checksum()
 assert [(e.name,e.ordinal) for e in p.DIRECTORY_ENTRY_EXPORT.symbols]==[(b'OnInit',1)]
 assert [d.dll.lower() for d in p.DIRECTORY_ENTRY_IMPORT]==[b'kernel32.dll']
-assert not ({e.name for d in p.DIRECTORY_ENTRY_IMPORT for e in d.imports} & {b'CreateThread',b'Sleep'})
+assert not ({e.name for d in p.DIRECTORY_ENTRY_IMPORT for e in d.imports} & {b'CreateThread',b'Sleep',b'QueryPerformanceCounter',b'QueryPerformanceFrequency',b'GetThreadTimes'})
 assert all(not (s.Characteristics&0x20000000 and s.Characteristics&0x80000000) for s in p.sections)
 # Actual helper function/data addresses are recovered from linked COFF relocations.
 # No hand-maintained final DLL RVAs in tests.
@@ -55,7 +55,7 @@ h='#include <stddef.h>\n#define IMAGE_SIZE '+str(p.OPTIONAL_HEADER.SizeOfImage)+
 h+='struct chunk {unsigned rva,offset,size,flags;};\nstatic const struct chunk chunks[]={'+','.join('{'+','.join(str(x) for x in [s.VirtualAddress,s.PointerToRawData,s.SizeOfRawData,s.Characteristics])+'}' for s in p.sections)+'};\n'
 for d in p.DIRECTORY_ENTRY_IMPORT:
  for e in d.imports:h+=f'#define IAT_{e.name.decode()} {e.address-p.OPTIONAL_HEADER.ImageBase}\n'
-for n in ['OnInit','DllMain','discover_panacea','cached_size','install_hook','previous_size','info_slot','game_begin','game_end','cache','generation','hits','refreshes','candidates','contention','no_package','invalid_size','evicted','fallback_active']:h+=f'#define RVA_{n} {addresses[n]}\n'
+for n in ['OnInit','DllMain','discover_panacea','cached_size','install_hook','previous_size','info_slot','game_begin','game_end','cache','generation','hits','refreshes','candidates','contention','no_package','invalid_size','evicted','fallback_active','path_profile_ok','path_install','path_commit','path_page','path_patches','path_patch_count','path_attrs_slot','negative_attrs','negative','negative_active','negative_fallbacks','negative_generation','neg_hits','neg_queries','neg_stored']:h+=f'#define RVA_{n} {addresses[n]}\n'
 # Currently all compiled code/data is PC-relative or zero-initialized.
 assert not p.OPTIONAL_HEADER.DATA_DIRECTORY[5].Size
 assert not p.OPTIONAL_HEADER.DATA_DIRECTORY[6].Size

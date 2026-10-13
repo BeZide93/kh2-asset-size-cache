@@ -1,7 +1,7 @@
 # Build and validate
 
 Repository: [BeZide93/kh2-asset-size-cache](https://github.com/BeZide93/kh2-asset-size-cache).
-The root DLL is ready for OpenKH installation. `packages/KH2-Asset-Size-Cache-v1-startup.zip`
+The root DLL is ready for OpenKH installation. `packages/KH2-Asset-Size-Cache-v1-path.zip`
 contains the complete source layout and also works as a local OpenKH mod.
 
 ## Linux build
@@ -19,6 +19,10 @@ gcc -O2 -pthread -I build tests/harness.c -o build/harness
 build/harness KH2AssetSizeCache.dll
 gcc -O2 -pthread -I build tests/discovery.c -o build/discovery
 build/discovery KH2AssetSizeCache.dll
+gcc -O2 -pthread -I build tests/negative_paths.c -o build/negative_paths
+build/negative_paths KH2AssetSizeCache.dll
+gcc -O2 -pthread -I build tests/path_hooks.c -o build/path_hooks
+build/path_hooks KH2AssetSizeCache.dll
 .venv/bin/python scripts/package_mod.py
 ```
 
@@ -26,10 +30,11 @@ Optional additional tests with your own original supported Panacea DLL:
 
 ```sh
 build/harness KH2AssetSizeCache.dll /absolute/path/to/original/version.dll
+build/path_hooks KH2AssetSizeCache.dll /absolute/path/to/original/version.dll
 ```
 
 `build.py` checks the DLL and creates `BUILD-MANIFEST.json`, `PE-EXPORTS.txt` and
-the test header. Packaging creates `dist/KH2-Asset-Size-Cache-v1-startup.zip` with the full
+the test header. Packaging creates `dist/KH2-Asset-Size-Cache-v1-path.zip` with the full
 source/repository layout and OpenKH manifest, plus `dist/SHA256SUMS.txt`.
 Generated build files, PDBs and import libraries are excluded from the ZIP.
 
@@ -47,4 +52,6 @@ with the source. Update the root `SHA256SUMS.txt` for the repository files and
 package. Build directories, PDBs and import libraries must not be committed.
 
 Unused PDB metadata is stripped so builds do not depend on the checkout path.
-The PE check also rejects `CreateThread`/`Sleep` imports in this startup-only build.
+The PE check rejects logging-worker and diagnostic timing imports in this build.
+Path-cache tests execute the compiled cache and all five indirect calls, including
+expiry, LastError, concurrent fallback invalidation and transaction rollback.
