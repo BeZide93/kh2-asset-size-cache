@@ -46,7 +46,7 @@ remain mandatory. Unknown, ambiguous or incompatible layouts disable the hook.
 
 Only KH2's recognized Windows x64 executable is accepted. The add-on is x64 even
 on an ARM64 host. It retains one `OnInit` export and imports only KERNEL32; it does
-not replace Panacea's `version.dll` or its Windows VERSION exports. Loaded modules
+not replace Panacea's proxy DLL or its exports. Loaded modules
 are pinned because the detour must remain valid for the process lifetime.
 
 This is not universal compatibility with every future compiler/Panacea rewrite.
@@ -93,3 +93,25 @@ is independent of the positive size cache's one-second TTL. Only confirmed
 missing paths are cached; this does not change the positive cache's rejection of
 failed sizes. The startup line reports whether both caches or only the size
 cache are installed. No diagnostic hooks or periodic logging are enabled.
+
+## Supported proxy names
+
+At OnInit, the add-on checks already loaded `version.dll`, `dbghelp.dll` and
+`dinput8.dll` modules using GetModuleHandleW. Its documented case-insensitive
+matching covers `DBGHELP.dll` and other capitalization. Each unique module
+handle is validated by the same existing Panacea size-function/code/layout
+profile before any hook is installed. A system DLL under one name does not
+prevent a compatible Panacea under another name from being selected.
+
+Multiple distinct compatible candidates or ambiguous code matches disable
+initialization without patching any candidate. Duplicate handles are checked
+once. The selected module is pinned using its address as before; the stricter
+optional path-cache check uses that same module. The startup line includes the
+normalized lookup name (`panacea=dbghelp.dll`, for example), not necessarily the
+on-disk capitalization. No extra diagnostic logging, loader override, LoadLibrary
+call or process-wide module enumeration is added. Unsupported filenames and
+future incompatible builds are not covered.
+
+API contract: [GetModuleHandleW](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandlew).
+Tests use a case-insensitive loader substitute and synthetic module layouts;
+they do not constitute an actual Windows/Proton loader integration test.

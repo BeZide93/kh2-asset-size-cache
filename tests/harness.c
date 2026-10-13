@@ -21,6 +21,9 @@ static size_t panacea_size;static RF *lookup_rf;
 static unsigned originals,infos,creates,addcalls,delcalls,threadcalls,pins;
 static int result=100,package_missing,mutate_metadata,fail_mode,bad_game,path_metadata;
 static unsigned vp_calls,flush_calls;
+static int proxy_map;
+static const char *proxy_names[3];
+static u8 *proxy_modules[3];
 static _Thread_local unsigned last_error=321,tid=1;
 static u64 ticks=100;
 static unsigned hold_fallback,fallback_entered,release_fallback;
@@ -37,7 +40,16 @@ static void *MS info(const char *n,const char *other){assert(n&&!other);__atomic
 static InfoFn slot=info;
 static int MS original(void *s,const char *n){assert(s==self&&n&&last_error==321);__atomic_fetch_add(&originals,1,__ATOMIC_RELAXED);info(n,0);if(mutate_metadata)package[0x12c]++;if(hold_fallback&&n==blocked_name){__atomic_store_n(&fallback_entered,1,__ATOMIC_RELEASE);while(!__atomic_load_n(&release_fallback,__ATOMIC_ACQUIRE))sched_yield();}last_error=777;return result;}
 static void jump(u8 *p,void *fn){p[0]=0xff;p[1]=0x25;memset(p+2,0,4);memcpy(p+6,&fn,8);}
-static void *MS module(const uint16_t *s){if(!s)return fakegame;assert(s[0]=='v');return panacea;}
+static void *MS module(const uint16_t *s){
+ if(!s)return fakegame;
+ const char *defaults[3]={"version.dll","dbghelp.dll","dinput8.dll"};
+ for(unsigned i=0;i<3;i++){
+  const char *name=proxy_map?proxy_names[i]:defaults[i];if(!name)continue;
+  unsigned j=0;for(;name[j]&&s[j];j++){unsigned a=s[j],b=(u8)name[j];if(a>='A'&&a<='Z')a+=32;if(b>='A'&&b<='Z')b+=32;if(a!=b)break;}
+  if(!name[j]&&!s[j])return proxy_map?proxy_modules[i]:(i==0?panacea:NULL);
+ }
+ return NULL;
+}
 static int MS pin(u32 flags,const uint16_t *addr,void **out){assert(flags==5&&addr);pins++;*out=im;return fail_mode!=8;}
 static u32 MS modulename(void *m,uint16_t *b,u32 cap){assert(!m&&cap==520);const char *s=bad_game?"other.exe":"Z:\\KH\\KINGDOM HEARTS II FINAL MIX.exe";unsigned i=0;do{b[i]=(u8)s[i];}while(s[i++]);return i-1;}
 static int MS disable(void *m){assert(m==im);return 1;}
@@ -57,7 +69,7 @@ static void bind(void){
  BIND(GetLastError,geterr);BIND(SetLastError,seterr);BIND(GetTickCount64,tick);BIND(GetCurrentThreadId,threadid);BIND(GetModuleHandleW,module);BIND(GetModuleFileNameW,modulename);BIND(GetModuleHandleExW,pin);BIND(CreateFileW,createfile);BIND(WriteFile,write_);BIND(CloseHandle,close_);BIND(DisableThreadLibraryCalls,disable);BIND(VirtualAlloc,alloc_);BIND(VirtualFree,free_);BIND(VirtualProtect,protect_);BIND(FlushInstructionCache,flush_);BIND(RtlLookupFunctionEntry,lookup);BIND(RtlAddFunctionTable,add_);BIND(RtlDeleteFunctionTable,delete_);
  for(unsigned i=0;i<sizeof(chunks)/sizeof(*chunks);i++){unsigned flags=chunks[i].flags;int p=PROT_READ;if(flags&0x80000000U)p|=PROT_WRITE;if(flags&0x20000000U)p|=PROT_EXEC;assert(!mprotect(im+chunks[i].rva,(chunks[i].size+4095)&~4095U,p));}
 }
-static void fresh(const char *dll){size_t n;if(im)assert(!munmap(im,IMAGE_SIZE));im=loadpe(dll,&n);assert(n==IMAGE_SIZE);bind();*(SizeFn *)(im+RVA_previous_size)=original;*(InfoFn **)(im+RVA_info_slot)=&slot;*(u64 *)(im+RVA_game_begin)=0;*(u64 *)(im+RVA_game_end)=UINT64_MAX;originals=infos=creates=threadcalls=pins=0;fail_mode=0;package_missing=mutate_metadata=path_metadata=0;memset(package,0,sizeof(package));*(int *)(package+0x12c)=100;ticks=100;tid=1;last_error=321;result=100;hold_fallback=fallback_entered=release_fallback=0;loglen=0;logtext[0]=0;}
+static void fresh(const char *dll){size_t n;if(im)assert(!munmap(im,IMAGE_SIZE));im=loadpe(dll,&n);assert(n==IMAGE_SIZE);bind();*(SizeFn *)(im+RVA_previous_size)=original;*(InfoFn **)(im+RVA_info_slot)=&slot;*(u64 *)(im+RVA_game_begin)=0;*(u64 *)(im+RVA_game_end)=UINT64_MAX;originals=infos=creates=threadcalls=pins=0;proxy_map=0;memset(proxy_names,0,sizeof(proxy_names));memset(proxy_modules,0,sizeof(proxy_modules));fail_mode=0;package_missing=mutate_metadata=path_metadata=0;memset(package,0,sizeof(package));*(int *)(package+0x12c)=100;ticks=100;tid=1;last_error=321;result=100;hold_fallback=fallback_entered=release_fallback=0;loglen=0;logtext[0]=0;}
 static int call(const char *n){last_error=321;int r=((SizeFn)(im+RVA_cached_size))(self,n);assert(last_error==777);return r;}
 static void test_cache(const char *dll){
  fresh(dll);assert(call(target)==100&&originals==1&&infos==2);for(unsigned i=0;i<1000;i++){ticks=101+i/2;assert(call(target)==100);}assert(originals==1&&infos==1002&&creates==0);assert(*(u64 *)(im+RVA_hits)==1000);
