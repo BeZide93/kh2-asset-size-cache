@@ -80,3 +80,11 @@ performance; its log records 3,375 hits from 3,832 candidates with no capacity
 evictions or contention fallbacks. This is not exhaustive gameplay validation.
 No GPU timing, asset-content cache, asynchronous asset loading or shader cache
 is provided. A size-cache hit does not avoid the actual asset load.
+
+## Additional path cache in test build v1-p2
+
+The rules above describe the original positive size cache. The separate
+[five-second negative-path cache](NEGATIVE_PATHS.md) has its own keys, strict
+Panacea call-site profile, statistics and hot-file-change limitations.
+It stores only confirmed missing-path attribute responses, never missing size
+results. The detailed diagnostic recorder remains enabled for comparison.

@@ -1,7 +1,7 @@
 # Build and validate
 
 Repository: [BeZide93/kh2-asset-size-cache](https://github.com/BeZide93/kh2-asset-size-cache).
-The root DLL is ready for OpenKH installation. `packages/KH2-Asset-Size-Cache-v1-d1.zip`
+The root DLL is ready for OpenKH installation. `packages/KH2-Asset-Size-Cache-v1-p2.zip`
 contains the complete source layout and also works as a local OpenKH mod.
 
 ## Linux build
@@ -21,6 +21,8 @@ gcc -O2 -pthread -I build tests/discovery.c -o build/discovery
 build/discovery KH2AssetSizeCache.dll
 gcc -O2 -pthread -I build tests/diagnostics.c -o build/diagnostics
 build/diagnostics KH2AssetSizeCache.dll
+gcc -O2 -pthread -I build tests/negative_paths.c -o build/negative_paths
+build/negative_paths KH2AssetSizeCache.dll
 .venv/bin/python scripts/package_mod.py
 ```
 
@@ -32,7 +34,7 @@ build/diagnostics KH2AssetSizeCache.dll /absolute/path/to/original/version.dll
 ```
 
 `build.py` checks the DLL and creates `BUILD-MANIFEST.json`, `PE-EXPORTS.txt` and
-the test header. Packaging creates `dist/KH2-Asset-Size-Cache-v1-d1.zip` with the full
+the test header. Packaging creates `dist/KH2-Asset-Size-Cache-v1-p2.zip` with the full
 source/repository layout and OpenKH manifest, plus `dist/SHA256SUMS.txt`.
 Unused CodeView/PDB metadata is stripped at link time so different checkout
 paths produce the same DLL. Generated build files, PDBs and import libraries

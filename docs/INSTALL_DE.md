@@ -6,10 +6,12 @@ Es ist auch für die Ausführung des x64-Spiels unter Proton auf ARM64 gedacht.
 Ein Spieltest unter Proton ARM64 bestätigt deutlich bessere Performance.
 Tatsächliche Ladepausen können weiterhin auftreten.
 
-**Testbuild v1-d1:** Die zusätzlichen Messungen und der gezielte Testablauf sind
+**Testbuild v1-p2:** Die zusätzlichen Messungen und der gezielte Testablauf sind
 in [DIAGNOSE_DE.md](DIAGNOSE_DE.md) beschrieben. Die bestätigte Verbesserung
 bezieht sich auf den bisherigen Cache v1; der neue Diagnosebuild benötigt
-noch einen Spieltest. `DIAG DISABLED` betrifft nur die Zusatzdiagnose.
+noch einen Spieltest. `DIAG DISABLED` betrifft die Zusatzdiagnose und den neuen Pfad-Cache.
+Der neue Pfad-Cache wird durch `PATHCACHE INSTALLED:` bestätigt.
+Seine Grenzen sind in der Testanleitung beschrieben.
 
 ## Installation über OpenKH
 

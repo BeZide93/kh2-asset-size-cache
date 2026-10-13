@@ -5,7 +5,7 @@
  */
 IMP int QueryPerformanceCounter(int64_t *);
 IMP int QueryPerformanceFrequency(int64_t *);
-#define DIAG_ROWS 512
+#define DIAG_ROWS 2048
 #define DIAG_NAME 384
 enum {D_ATTR,D_PATH,D_INFO,D_OPEN,D_READ,D_SEEK,D_TELL,D_CLOSE,D_REMASTER,D_REGISTER,D_SIZE_TOTAL,D_PHASES};
 typedef struct {u32 used,scope,phase;char name[DIAG_NAME];u64 count,ticks,max,unsuccessful,bytes;} DiagRow;
@@ -17,6 +17,7 @@ static u64 diag_freq,diag_origin,diag_dropped,diag_untracked,diag_clock_errors,d
 static uint16_t diag_path[520];
 static void *volatile diag_direct[8];
 static void **diag_attrs_slot,**diag_register_slot,**diag_info_slot;
+#include "negative_paths.h"
 static u8 *diag_page;
 static int diag_try(u32 *lock){return !__atomic_exchange_n(lock,1,__ATOMIC_ACQUIRE);}
 static void diag_unlock(u32 *lock){__atomic_store_n(lock,0,__ATOMIC_RELEASE);}
@@ -44,7 +45,7 @@ static void diag_record(unsigned scope,unsigned phase,const char *name,u64 start
     hash^=scope*31+phase;
     if(!diag_try(&diag_lock)){INC(diag_dropped);return;}
     DiagRow *r=0;
-    for(unsigned p=0;p<8;p++){
+    for(unsigned p=0;p<16;p++){
         DiagRow *e=&diag_rows[(hash+p)&(DIAG_ROWS-1)];
         if(!e->used){r=e;r->scope=scope;r->phase=phase;copy(r->name,name,len+1);r->used=1;break;}
         if(e->scope==scope&&e->phase==phase&&equal(e->name,name,len+1)){r=e;break;}
@@ -76,7 +77,7 @@ static void diag_stream_name(void *file,char *name,int remove){
 /* Scope 0 is Panacea LoadFile, scope 1 is an original GetFileSize execution.
  * The latter is a cache miss OR an uncached fallback, never a cache hit. */
 #define DIAG_WRAPPERS(s) \
-static u32 diag_attrs_##s(const uint16_t *p){DIAG_BEGIN;diag_name(key,p,1);DIAG_START;u32 r=((u32 (*)(const uint16_t *))*diag_attrs_slot)(p);DIAG_END;DIAG_SAVE(s,D_ATTR,r==0xffffffffU,0);return r;} \
+static u32 diag_attrs_##s(const uint16_t *p){DIAG_BEGIN;diag_name(key,p,1);DIAG_START;u32 r=negative_attrs(p);DIAG_END;DIAG_SAVE(s,D_ATTR,r==0xffffffffU,0);return r;} \
 static u8 diag_transform_##s(uint16_t *out,int n,const char *p){DIAG_BEGIN;diag_name(key,p,0);DIAG_START;u8 r=((u8 (*)(uint16_t *,int,const char *))diag_direct[0])(out,n,p);DIAG_END;DIAG_SAVE(s,D_PATH,!r,0);return r;} \
 static void *diag_info_##s(const char *p,const char *alt){DIAG_BEGIN;diag_name(key,p,0);DIAG_START;void *r=((InfoFn)*diag_info_slot)(p,alt);DIAG_END;DIAG_SAVE(s,D_INFO,!r,0);return r;} \
 static void *diag_open_##s(const uint16_t *p,const uint16_t *mode){DIAG_BEGIN;diag_name(key,p,1);DIAG_START;void *r=((void *(*)(const uint16_t *,const uint16_t *))diag_direct[1])(p,mode);DIAG_END;diag_stream_add(r,key);DIAG_SAVE(s,D_OPEN,!r,0);return r;} \
@@ -116,7 +117,7 @@ static __attribute__((noinline)) int diag_profile_ok(u8 *base,u8 *size_fn){
 static void *diag_wrapper(unsigned id){
     switch(id){
     case 0:return diag_attrs_0;case 1:return diag_transform_0;case 2:return diag_info_0;case 3:return diag_open_0;case 4:return diag_read_0;case 5:return diag_seek_0;case 6:return diag_tell_0;case 7:return diag_close_0;case 8:return diag_remaster;case 9:return diag_register;
-    case 10:return diag_attrs_1;case 11:return diag_transform_1;case 12:return diag_info_1;case 13:return diag_open_1;case 14:return diag_read_1;case 15:return diag_seek_1;case 16:return diag_tell_1;case 17:return diag_close_1;
+    case 10:return diag_attrs_1;case 11:return diag_transform_1;case 12:return diag_info_1;case 13:return diag_open_1;case 14:return diag_read_1;case 15:return diag_seek_1;case 16:return diag_tell_1;case 17:return diag_close_1;case 18:return negative_attrs;
     default:return 0;}
 }
 /* Prepare without touching Panacea. Called BEFORE installing the size detour,
@@ -131,7 +132,7 @@ static __attribute__((noinline)) int diag_prepare(u8 *base,u8 *size_fn){
         if(!diag_page&&origin+d<0x00007fff00000000ULL)diag_page=VirtualAlloc((void *)(origin+d),4096,0x3000,4);
     }
     if(!diag_page)return 0;
-    for(unsigned i=0;i<18;i++)absjump(diag_page+i*16,diag_wrapper(i));
+    for(unsigned i=0;i<19;i++)absjump(diag_page+i*16,diag_wrapper(i));
     diag_patch_count=sizeof(diag_sites)/sizeof(*diag_sites);
     for(unsigned i=0;i<diag_patch_count;i++){
         const DiagSite *s=&diag_sites[i];u8 *pc=base+s->rva;
@@ -145,7 +146,7 @@ static __attribute__((noinline)) int diag_prepare(u8 *base,u8 *size_fn){
     }
     for(unsigned i=0;i<7;i++)diag_direct[i]=base+diag_callees[i];
     diag_attrs_slot=(void **)(base+0x460f0);diag_info_slot=(void **)(base+0x5fcc0);diag_register_slot=(void **)(base+0x5fd80);
-    u32 old;if(!VirtualProtect(diag_page,4096,0x20,&old)||!FlushInstructionCache((void *)(intptr_t)-1,diag_page,18*16))goto failed;
+    u32 old;if(!VirtualProtect(diag_page,4096,0x20,&old)||!FlushInstructionCache((void *)(intptr_t)-1,diag_page,19*16))goto failed;
     return 1;
 failed:VirtualFree(diag_page,0,0x8000);diag_page=0;diag_patch_count=0;return 0;
 }
@@ -162,7 +163,7 @@ static __attribute__((noinline)) int diag_install(void){
     for(unsigned i=0;i<diag_patch_count;i++)copy(diag_patches[i].disp,&diag_patches[i].replacement,4);
     for(unsigned i=0;i<diag_patch_count;i++)if(!FlushInstructionCache((void *)(intptr_t)-1,diag_patches[i].disp,4))goto rollback;
     for(unsigned i=diag_patch_count;i;i--){DiagPatch *p=&diag_patches[i-1];if(!VirtualProtect(p->disp,4,p->old,&ignored))goto rollback;p->writable=0;}
-    diag_active=1;return 1;
+    negative_active=1;diag_active=1;return 1;
 rollback:
     /* Keep relay memory pinned if restoring a page fails: never free a target
      * that a surviving call site might still reference. Wrappers still forward
@@ -182,7 +183,7 @@ static void diag_write(const char *b,u32 n){
 }
 static const char *diag_phase(unsigned p){switch(p){case D_ATTR:return "raw_attributes";case D_PATH:return "path_lookup";case D_INFO:return "package_lookup";case D_OPEN:return "open";case D_READ:return "read";case D_SEEK:return "seek";case D_TELL:return "tell";case D_CLOSE:return "close";case D_REMASTER:return "remastered";case D_REGISTER:return "register";default:return "size_total";}}
 static void diag_header(void){
-    diag_set_path();char b[600];unsigned n=text(b,0,"KH2AssetLoadDiag d1; call-site profile=panacea-msvc-1; ticks are QPC wall time; frequency=");n=number(b,n,diag_freq);n=text(b,n," origin=");n=number(b,n,diag_origin);n=text(b,n,"\r\nScopes: load=LoadFile only; size=original GetFileSize (miss/fallback). remastered is inclusive; size_total includes size phases. Do not sum nested phases.\r\n");diag_write(b,n);
+    diag_set_path();char b[600];unsigned n=text(b,0,"KH2AssetLoadDiag p2; call-site profile=panacea-msvc-1; ticks are QPC wall time; frequency=");n=number(b,n,diag_freq);n=text(b,n," origin=");n=number(b,n,diag_origin);n=text(b,n,"\r\nScopes: load=LoadFile only; size=original GetFileSize (miss/fallback). remastered is inclusive; size_total includes size phases. Do not sum nested phases.\r\n");diag_write(b,n);
 }
 static __attribute__((noinline)) void diag_flush(void){
     if(!diag_active)return;

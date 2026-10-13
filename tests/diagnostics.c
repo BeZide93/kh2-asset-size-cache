@@ -64,7 +64,7 @@ static void wrappers(const char *dll){
     CHECK(FN(diag_attrs_0,u32(MS *)(const uint16_t *))(wide_path)==0xffffffffU);
     *(u32 *)(im+RVA_diag_lock)=0;assert(*(u64 *)(im+RVA_diag_dropped)==1);
     FN(diag_flush,void(MS *)(void))();assert(strstr(logtext,"<untracked-stream>"));
-    for(unsigned i=0;i<2048;i++){char name[64];snprintf(name,sizeof(name),"many/%u.asset",i);CHECK(FN(diag_size,int(MS *)(SizeFn,void *,const char *))(original,self,name)==100);}
+    for(unsigned i=0;i<8192;i++){char name[64];snprintf(name,sizeof(name),"many/%u.asset",i);CHECK(FN(diag_size,int(MS *)(SizeFn,void *,const char *))(original,self,name)==100);}
     assert(*(u64 *)(im+RVA_diag_dropped)>1);
     puts("PASS actual PE diagnostics: all typed phase wrappers preserve arguments, return values and LastError; measured durations/read bytes/failures; cache miss total; no per-call log I/O; one handle per flush; closed stream removal and nonblocking drops.");
 }
@@ -104,15 +104,15 @@ static void profile(const char *dll,const char *fixture){
     u8 *cache_page=page;
     u8 *before=malloc(panacea_size);assert(before);memcpy(before,panacea,panacea_size);
     assert(FN(diag_install,int(MS *)(void))());
-    unsigned count=*(unsigned *)(im+RVA_diag_patch_count);assert(count==31);assert(!mprotect(panacea,panacea_size,7));
+    unsigned count=*(unsigned *)(im+RVA_diag_patch_count);assert(count==34);assert(!mprotect(panacea,panacea_size,7));
     Patch *patches=(Patch *)(im+RVA_diag_patches);
     for(unsigned i=0;i<count;i++){
         Patch *p=&patches[i];assert(*(int32_t *)p->disp==p->replacement);
-        u8 *dest=p->disp+4+p->replacement;assert(dest>=relay_page&&dest<relay_page+18*16);
+        u8 *dest=p->disp+4+p->replacement;assert(dest>=relay_page&&dest<relay_page+19*16);
         memcpy(p->disp,&p->saved,4);
     }
     assert(!memcmp(before,panacea,panacea_size));free(before);
     assert(!munmap(cache_page,4096));assert(!munmap(relay_page,4096));page=NULL;assert(!munmap(panacea,panacea_size));panacea=NULL;
-    puts("PASS supplied Panacea: complete caller/callee profiles; all 31 relay operands installed; installed together with the cache detour; every other byte unchanged; patched and diagnostic version.dll variants supported without replacing them.");
+    puts("PASS supplied Panacea: complete caller/callee profiles; all 34 relay operands installed; installed together with the cache detour; every other byte unchanged; patched and diagnostic version.dll variants supported without replacing them.");
 }
 int main(int argc,char **argv){assert(argc>=2);wrappers(argv[1]);transactions(argv[1]);for(int i=2;i<argc;i++)profile(argv[1],argv[i]);puts("LIMIT: Linux MS-x64 harness, not a game/Proton ARM64 run. Full Panacea profile tests require a local DLL and are not part of CI.");return 0;}

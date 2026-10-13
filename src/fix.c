@@ -174,11 +174,11 @@ static int kh2_executable(void){
     const char want[]="kingdom hearts ii final mix.exe";unsigned i=0;while(want[i]&&pos+i<n){if(lower(path[pos+i])!=(u8)want[i])return 0;i++;}return !want[i]&&pos+i==n;
 }
 static u32 stats_worker(void *unused){
-    (void)unused;for(;;){Sleep(5000);diag_flush();char b[768];unsigned n=0;n=text(b,n,"STATS cumulative candidates=");n=number(b,n,READ(candidates));n=text(b,n," hits=");n=number(b,n,READ(hits));n=text(b,n," refresh=");n=number(b,n,READ(refreshes));n=text(b,n," expired=");n=number(b,n,READ(expired));n=text(b,n," changed=");n=number(b,n,READ(changed));n=text(b,n," evicted=");n=number(b,n,READ(evicted));n=text(b,n," bypass=");n=number(b,n,READ(bypasses));n=text(b,n," contention=");n=number(b,n,READ(contention));n=text(b,n," no_package=");n=number(b,n,READ(no_package));n=text(b,n," nonpositive=");n=number(b,n,READ(invalid_size));b[n++]='\r';b[n++]='\n';log_buffer(b,n);}return 0;
+    (void)unused;for(;;){Sleep(5000);diag_flush();negative_stats();char b[768];unsigned n=0;n=text(b,n,"STATS cumulative candidates=");n=number(b,n,READ(candidates));n=text(b,n," hits=");n=number(b,n,READ(hits));n=text(b,n," refresh=");n=number(b,n,READ(refreshes));n=text(b,n," expired=");n=number(b,n,READ(expired));n=text(b,n," changed=");n=number(b,n,READ(changed));n=text(b,n," evicted=");n=number(b,n,READ(evicted));n=text(b,n," bypass=");n=number(b,n,READ(bypasses));n=text(b,n," contention=");n=number(b,n,READ(contention));n=text(b,n," no_package=");n=number(b,n,READ(no_package));n=text(b,n," nonpositive=");n=number(b,n,READ(invalid_size));b[n++]='\r';b[n++]='\n';log_buffer(b,n);}return 0;
 }
 EXPORT void OnInit(const uint16_t *folder){
     if(__atomic_exchange_n(&init_once,1,__ATOMIC_ACQ_REL))return;
-    u32 error=GetLastError();set_log_path(folder);log_line("KH2AssetSizeCache v1-d1; auto-discovery; positive size cache; slots=256; TTL=1000 ms; all file paths up to 259 bytes; package lookup retained");
+    u32 error=GetLastError();set_log_path(folder);log_line("KH2AssetSizeCache v1-p2; auto-discovery; positive size cache; slots=256; TTL=1000 ms; all file paths up to 259 bytes; package lookup retained");
     if(!kh2_executable()){log_line("DISABLED: not the supported KH2 executable");goto done;}
     static const uint16_t version[]={'v','e','r','s','i','o','n','.','d','l','l',0};u8 *base=GetModuleHandleW(version);
     u8 *game=GetModuleHandleW(0);Discovery detected;int result=discover_panacea(base,game,&detected);
@@ -190,7 +190,7 @@ EXPORT void OnInit(const uint16_t *folder){
     int diagnostic_ready=diag_prepare(base,detected.size_fn);
     if(!install_hook(detected.size_fn)){log_line("DISABLED: trampoline installation failed; original entry retained/restored");goto done;}
     installed=1;log_line("INSTALLED: Panacea GetFileSize wrapped; package lookup retained on cache candidates");
-    if(diagnostic_ready&&diag_install()){diag_header();log_line("DIAG INSTALLED: LoadFile and original GetFileSize phases -> KH2AssetLoadDiag.log");}
+    if(diagnostic_ready&&diag_install()){log_line("PATHCACHE INSTALLED: negative attributes; entries=1024; TTL=5000 ms; only errors 2/3; absolute DOS paths; existing files always queried");diag_header();log_line("DIAG INSTALLED: LoadFile and original GetFileSize phases -> KH2AssetLoadDiag.log");}
     else log_line("DIAG DISABLED: unsupported diagnostic profile or installation failure; size cache remains active");
     void *thread=CreateThread(0,0,stats_worker,0,0,0);if(thread)CloseHandle(thread);else log_line("WARNING: stats worker unavailable; cache remains active");
 done:SetLastError(error);

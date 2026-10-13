@@ -1,16 +1,15 @@
-# Loading-stall diagnostic build v1-d1
+# Loading-stall diagnostics (v1-p2)
 
-This is the first follow-up patch: measure the remaining stalls before choosing
-another optimization. The 256-entry, one-second positive size cache stays active
+The d1 instrumentation is retained alongside the [negative-path optimization](NEGATIVE_PATHS.md). The 256-entry, one-second positive size cache stays active
 with the same validity rules. This build does not skip loads, resource
-registration or remastered processing. It does not promise higher FPS.
+registration or remastered processing. The path cache additionally reuses confirmed missing-path probes for five seconds.
 
 ## Test and rollback
 
 1. Close KH2. Back up the working `KH2AssetSizeCache.dll` **outside** all mod
    loading folders. Replace it with this branch's root DLL in `mod/kh2/dll`,
    **after** any OpenKH mod build. Alternatively import this branch's
-   `packages/KH2-Asset-Size-Cache-v1-d1.zip` as a local OpenKH mod.
+   `packages/KH2-Asset-Size-Cache-v1-p2.zip` as a local OpenKH mod.
 2. Keep the existing `version.dll`, Re:Fined, assets and settings unchanged.
    Do not re-enable `KH2RikuSizeFix.dll` alongside this cache.
 3. While the game is closed, move the old cache, diagnostic, Panacea performance
@@ -27,7 +26,7 @@ registration or remastered processing. It does not promise higher FPS.
    - `panacea_riku_perf.log` from the existing diagnostic Panacea;
    - `panacea_hookfix.log` for startup/installation verification.
 
-The cache log must contain `INSTALLED:` **and** `DIAG INSTALLED:`. If it reports
+The cache log must contain `INSTALLED:` **and** `DIAG INSTALLED:` and `PATHCACHE INSTALLED:`. If it reports
 `DIAG DISABLED`, send that log first: the cache may still work, but no detailed
 phase diagnosis is available. A stats-worker warning also means the logs will
 not be flushed periodically. No Proton log or crash dump is needed for a normal
@@ -76,7 +75,7 @@ and path separators safely. Oversized names use an explicit marker.
 telemetry. High values must be considered before drawing conclusions. Recording
 uses bounded memory and nonblocking locks. A busy/full recorder drops only a
 measurement; the original operation still runs. CRT stream-to-path bookkeeping
-has 32 slots, and aggregation has 512 entries with eight probes per key.
+has 32 slots, and aggregation has 2048 entries with sixteen probes per key.
 The writer opens the diagnostic log once per drain; hooks do not write logs.
 Instrumentation and background writes still have some overhead.
 
@@ -86,10 +85,10 @@ The cache retains its existing automatic recognition. The extra diagnosis is
 intentionally restricted to the supplied MSVC Panacea implementation: complete
 caller and relevant callee hashes, section checks and the expected attribute
 import must match before any diagnostic patch is attempted. Unknown builds
-disable **only diagnostics**. This is not a promise to support every future
+disable the detailed diagnostics and new path cache, retaining a supported size cache. This is not a promise to support every future
 Panacea release without updating a diagnostic profile.
 
-The add-on redirects 31 validated call-site operands to nearby leaf jump relays.
+The add-on redirects 34 validated call-site operands to nearby leaf jump relays.
 It does not detour these functions' prologues or replace their unwind metadata.
 Typed wrappers preserve arguments, results and Win32 `LastError`; indirect game
 and import slots are read again on each call. Modules and relays stay pinned.

@@ -1,5 +1,6 @@
 /* Diagnostic-only profile: known Panacea implementation. Hashes include all
- * operands, so relocated/recompiled layouts disable diagnostics, not the cache. */
+ * operands, so relocated/recompiled layouts disable diagnosis/path caching,
+ * not the existing automatically recognized size cache. */
 typedef struct {u32 rva,length;u64 hash;} DiagProfile;
 static const DiagProfile diag_profiles[]={
     {0xfeb0,0x505,0x055aaad3ff206c1aULL},
@@ -17,6 +18,9 @@ static const u32 diag_callees[]={0xd660,0x268e0,0x2a934,0x280f8,0x27ddc,0x26fa0,
 typedef struct {u32 rva;u8 kind,wrapper;} DiagSite;
 /* kind: E8 call=0, FF15 indirect call=1, MOV RAX,[RIP+slot]=2. */
 static const DiagSite diag_sites[]={
+    {0xd6ca,1,18},
+    {0xd70c,1,18},
+    {0xd765,1,18},
     {0xff44,1,0},
     {0x1023f,0,1},
     {0xff84,2,2},
