@@ -90,6 +90,8 @@ DIAG_WRAPPERS(0)
 DIAG_WRAPPERS(1)
 static void diag_remaster(void *pkg,const uint16_t *path,void *data){DIAG_BEGIN;diag_name(key,path,1);DIAG_START;((void (*)(void *,const uint16_t *,void *))diag_direct[6])(pkg,path,data);DIAG_END;DIAG_SAVE(0,D_REMASTER,0,0);}
 static void detail_flush(void);
+static void io_flush(void);
+#include "io_diagnostics.h"
 #include "load_detail.h"
 /* Called only for an original size execution; leaves cache semantics intact. */
 static __attribute__((noinline)) int diag_size(SizeFn original,void *self,const char *name){
@@ -205,7 +207,7 @@ static void diag_write(const char *b,u32 n){
 }
 static const char *diag_phase(unsigned p){switch(p){case D_ATTR:return "raw_attributes";case D_PATH:return "path_lookup";case D_INFO:return "package_lookup";case D_OPEN:return "open";case D_READ:return "read";case D_SEEK:return "seek";case D_TELL:return "tell";case D_CLOSE:return "close";case D_REMASTER:return "remastered";case D_REGISTER:return "register";case D_ORIGINAL_LOAD:return "original_load";default:return "size_total";}}
 static void diag_header(void){
-    diag_set_path();char b[600];unsigned n=text(b,0,"KH2AssetLoadDiag d3; call-site profile=panacea-msvc-1; ticks are QPC wall time; frequency=");n=number(b,n,diag_freq);n=text(b,n," origin=");n=number(b,n,diag_origin);n=text(b,n,"\r\nScopes: load=LoadFile only; size=original GetFileSize (miss/fallback). remastered is inclusive; size_total includes size phases. Do not sum nested phases.\r\n");diag_write(b,n);
+    diag_set_path();char b[600];unsigned n=text(b,0,"KH2AssetLoadDiag d4; call-site profile=panacea-msvc-1; ticks are QPC wall time; frequency=");n=number(b,n,diag_freq);n=text(b,n," origin=");n=number(b,n,diag_origin);n=text(b,n,"\r\nScopes: load=LoadFile only; size=original GetFileSize (miss/fallback). remastered is inclusive; size_total includes size phases. Do not sum nested phases.\r\n");diag_write(b,n);
 }
 static __attribute__((noinline)) void diag_flush(void){
     if(!diag_active)return;
@@ -219,6 +221,7 @@ static __attribute__((noinline)) void diag_flush(void){
         n=text(b,0,row.scope?"PHASE scope=size phase=":"PHASE scope=load phase=");n=text(b,n,diag_phase(row.phase));n=text(b,n," count=");n=number(b,n,row.count);n=text(b,n," total_ticks=");n=number(b,n,row.ticks);n=text(b,n," max_ticks=");n=number(b,n,row.max);n=text(b,n," unsuccessful=");n=number(b,n,row.unsuccessful);n=text(b,n," bytes=");n=number(b,n,row.bytes);n=text(b,n," file=\"");n=text(b,n,row.name);n=text(b,n,"\"\r\n");diag_write(b,n);
     }
     detail_flush();
+    io_flush();
     CloseHandle(diag_output);diag_output=0;
 }
 
@@ -240,4 +243,26 @@ static void detail_flush(void){
         n=text(b,n," file=\"");n=text(b,n,e.name);n=text(b,n,"\"\r\n");diag_write(b,n);
 #undef DETAIL_FIELD
     }
+}
+
+static void io_flush(void){
+    if(!READ(io_enabled))return;
+    u32 live=0;for(u32 i=0;i<io_count;i++)if(__atomic_load_n(io_patches[i].slot,__ATOMIC_ACQUIRE)==io_patches[i].replacement)live++;
+    char b[700];u32 n=text(b,0,"IOSTATUS installed_slots=");n=number(b,n,io_count);
+#define IO_FIELD(label,value) n=text(b,n,label);n=number(b,n,value)
+    IO_FIELD(" live_slots=",live);IO_FIELD(" open_windows=",READ(io_windows));IO_FIELD(" dropped=",READ(io_dropped));IO_FIELD(" clock_errors=",READ(io_clock_errors));n=text(b,n,"\r\n");diag_write(b,n);
+    for(u32 m=0;m<2;m++)for(u32 a=0;a<IO_APIS;a++){
+        IoSum s;if(!diag_try(&io_lock))continue;s=io_sums[m][a];diag_unlock(&io_lock);if(!s.count)continue;
+        n=text(b,0,"IOCOUNTERS module=");n=text(b,n,m?"panacea":"game");n=text(b,n," api=");n=text(b,n,io_name(a));
+        IO_FIELD(" calls=",s.count);IO_FIELD(" total_ticks=",s.ticks);IO_FIELD(" max_ticks=",s.max);IO_FIELD(" bytes=",s.bytes);n=text(b,n,"\r\n");diag_write(b,n);
+    }
+    for(u32 i=0;i<IO_EVENTS;i++){
+        IoEvent e;if(!diag_try(&io_lock))break;if(!io_queued){diag_unlock(&io_lock);break;}
+        e=io_events[io_read];io_read=(io_read+1)%IO_EVENTS;io_queued--;diag_unlock(&io_lock);
+        n=text(b,0,"IOEVENT module=");n=text(b,n,e.module?"panacea":"game");n=text(b,n," api=");n=text(b,n,io_name(e.api));
+        IO_FIELD(" thread=",e.thread);IO_FIELD(" start_qpc=",e.start);IO_FIELD(" end_qpc=",e.end);IO_FIELD(" wall_ticks=",e.end-e.start);
+        IO_FIELD(" handle_or_address=",e.handle);IO_FIELD(" requested_or_arg=",e.requested);IO_FIELD(" bytes=",e.bytes);
+        IO_FIELD(" result=",e.result);IO_FIELD(" last_error=",e.error);IO_FIELD(" timeout_ms=",e.timeout);n=text(b,n,"\r\n");diag_write(b,n);
+    }
+#undef IO_FIELD
 }

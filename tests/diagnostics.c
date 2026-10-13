@@ -149,7 +149,7 @@ static void details(const char *dll){
     memcpy(relay+1024,caller,sizeof(caller));assert(!mprotect(relay,4096,5));
     typedef int(MS *Load)(void *,const char *,void *,u8);
     for(expected_hd=0;expected_hd<2;expected_hd++)CHECK(((Load)(relay+1024))(self,target,package,expected_hd)==54321);
-    assert(hook[0]==load_&&creates==0&&cpu_reads==4); /* Hook is never replaced */
+    assert(hook[0]==load_&&creates==0&&cpu_reads==4&&*(u32 *)(im+RVA_io_windows)==0); /* Hook is never replaced */
     hook[0]=load_other_;expected_hd=1;CHECK(((Load)(relay+1024))(self,target,package,1)==-6);
     CHECK(FN(diag_register,int(MS *)(const char *,int,void *))(target,12345,self)==-1);
     FN(diag_flush,void(MS *)(void))();
