@@ -1,7 +1,7 @@
 # Build and validate
 
 Repository: [BeZide93/kh2-asset-size-cache](https://github.com/BeZide93/kh2-asset-size-cache).
-The root DLL is ready for OpenKH installation. `packages/KH2-Asset-Size-Cache-v1.zip`
+The root DLL is ready for OpenKH installation. `packages/KH2-Asset-Size-Cache-v1-d1.zip`
 contains the complete source layout and also works as a local OpenKH mod.
 
 ## Linux build
@@ -19,6 +19,8 @@ gcc -O2 -pthread -I build tests/harness.c -o build/harness
 build/harness KH2AssetSizeCache.dll
 gcc -O2 -pthread -I build tests/discovery.c -o build/discovery
 build/discovery KH2AssetSizeCache.dll
+gcc -O2 -pthread -I build tests/diagnostics.c -o build/diagnostics
+build/diagnostics KH2AssetSizeCache.dll
 .venv/bin/python scripts/package_mod.py
 ```
 
@@ -26,17 +28,18 @@ Optional additional tests with your own original supported Panacea DLL:
 
 ```sh
 build/harness KH2AssetSizeCache.dll /absolute/path/to/original/version.dll
+build/diagnostics KH2AssetSizeCache.dll /absolute/path/to/original/version.dll
 ```
 
 `build.py` checks the DLL and creates `BUILD-MANIFEST.json`, `PE-EXPORTS.txt` and
-the test header. Packaging creates `dist/KH2-Asset-Size-Cache-v1.zip` with the full
+the test header. Packaging creates `dist/KH2-Asset-Size-Cache-v1-d1.zip` with the full
 source/repository layout and OpenKH manifest, plus `dist/SHA256SUMS.txt`.
 Generated build files, PDBs and import libraries are excluded from the ZIP.
 
 ## GitHub Actions
 
 The workflow runs on pushes, pull requests and manual requests. It builds the
-DLL, runs the compiled-code tests, checks repeat-build reproducibility, packages
+DLL, verifies it matches the committed test DLL, runs the compiled-code tests, checks repeat-build reproducibility, packages
 the complete project and publishes a workflow artifact named
 `KH2-Asset-Size-Cache`. No secrets, repository writes or releases are required.
 
