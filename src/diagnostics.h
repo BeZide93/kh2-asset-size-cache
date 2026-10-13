@@ -1,4 +1,4 @@
-/* Optional call-site telemetry. Apache-2.0. No load results are cached here.
+/* Optional call-site and fallback target-selection telemetry. Apache-2.0. No load results are cached here.
  * Call-site relays leave function prologues, unwind metadata and the original
  * game's hooks alone. The deliberately strict diagnostic profile is separate
  * from the size cache's address-independent recognizer.
@@ -7,7 +7,7 @@ IMP int QueryPerformanceCounter(int64_t *);
 IMP int QueryPerformanceFrequency(int64_t *);
 #define DIAG_ROWS 2048
 #define DIAG_NAME 384
-enum {D_ATTR,D_PATH,D_INFO,D_OPEN,D_READ,D_SEEK,D_TELL,D_CLOSE,D_REMASTER,D_REGISTER,D_SIZE_TOTAL,D_PHASES};
+enum {D_ATTR,D_PATH,D_INFO,D_OPEN,D_READ,D_SEEK,D_TELL,D_CLOSE,D_REMASTER,D_REGISTER,D_SIZE_TOTAL,D_ORIGINAL_LOAD,D_PHASES};
 typedef struct {u32 used,scope,phase;char name[DIAG_NAME];u64 count,ticks,max,unsuccessful,bytes;} DiagRow;
 typedef struct {void *file;char name[DIAG_NAME];} DiagStream;
 static DiagRow diag_rows[DIAG_ROWS];
@@ -17,6 +17,7 @@ static u64 diag_freq,diag_origin,diag_dropped,diag_untracked,diag_clock_errors,d
 static uint16_t diag_path[520];
 static void *volatile diag_direct[8];
 static void **diag_attrs_slot,**diag_register_slot,**diag_info_slot;
+static void ***diag_load_hook_slot;
 #include "negative_paths.h"
 static u8 *diag_page;
 static int diag_try(u32 *lock){return !__atomic_exchange_n(lock,1,__ATOMIC_ACQUIRE);}
@@ -88,7 +89,8 @@ static int diag_close_##s(void *file){DIAG_BEGIN;diag_stream_name(file,key,1);DI
 DIAG_WRAPPERS(0)
 DIAG_WRAPPERS(1)
 static void diag_remaster(void *pkg,const uint16_t *path,void *data){DIAG_BEGIN;diag_name(key,path,1);DIAG_START;((void (*)(void *,const uint16_t *,void *))diag_direct[6])(pkg,path,data);DIAG_END;DIAG_SAVE(0,D_REMASTER,0,0);}
-static int diag_register(const char *name,int size,void *data){DIAG_BEGIN;diag_name(key,name,0);DIAG_START;int r=((int (*)(const char *,int,void *))*diag_register_slot)(name,size,data);DIAG_END;DIAG_SAVE(0,D_REGISTER,r==-1,0);return r;}
+static void detail_flush(void);
+#include "load_detail.h"
 /* Called only for an original size execution; leaves cache semantics intact. */
 static __attribute__((noinline)) int diag_size(SizeFn original,void *self,const char *name){
     if(!diag_active)return original(self,name);
@@ -101,7 +103,7 @@ static __attribute__((noinline)) int diag_size(SizeFn original,void *self,const 
 #undef DIAG_WRAPPERS
 /* Generated from the original, user-supplied Panacea. No game/DLL bytes. */
 #include "diagnostic_profile.h"
-typedef struct {u8 *disp;int32_t saved,replacement;u32 old;int writable;} DiagPatch;
+typedef struct {u8 *disp;u8 saved[8],replacement[8];u32 length,old;int writable;} DiagPatch;
 static DiagPatch diag_patches[64];
 static volatile unsigned diag_patch_count;
 static u64 diag_hash(const u8 *b,u32 n){u64 h=14695981039346656037ULL;while(n--)h=(h^*b++)*1099511628211ULL;return h;}
@@ -112,13 +114,22 @@ static __attribute__((noinline)) int diag_profile_ok(u8 *base,u8 *size_fn){
         if(!section_has(&image,p->rva,p->length,READABLE|EXECUTABLE,WRITABLE)||diag_hash(base+p->rva,p->length)!=p->hash)return 0;
     }
     if(import_slot(&image,"GetFileAttributesW")!=0x460f0||!section_has(&image,0x5fcc0,8,READABLE|WRITABLE,EXECUTABLE)||!section_has(&image,0x5fd80,8,READABLE|WRITABLE,EXECUTABLE))return 0;
+    if(!section_has(&image,0x5fdd0,8,READABLE|WRITABLE,EXECUTABLE))return 0;
     return 1;
 }
 static void *diag_wrapper(unsigned id){
     switch(id){
     case 0:return diag_attrs_0;case 1:return diag_transform_0;case 2:return diag_info_0;case 3:return diag_open_0;case 4:return diag_read_0;case 5:return diag_seek_0;case 6:return diag_tell_0;case 7:return diag_close_0;case 8:return diag_remaster;case 9:return diag_register;
-    case 10:return diag_attrs_1;case 11:return diag_transform_1;case 12:return diag_info_1;case 13:return diag_open_1;case 14:return diag_read_1;case 15:return diag_seek_1;case 16:return diag_tell_1;case 17:return diag_close_1;case 18:return negative_attrs;
+    case 10:return diag_attrs_1;case 11:return diag_transform_1;case 12:return diag_info_1;case 13:return diag_open_1;case 14:return diag_read_1;case 15:return diag_seek_1;case 16:return diag_tell_1;case 17:return diag_close_1;case 18:return negative_attrs;case 19:return diag_original_load;
     default:return 0;}
+}
+static __attribute__((noinline)) void diag_make_relays(void){
+    for(unsigned i=0;i<20;i++)absjump(diag_page+i*32,diag_wrapper(i));
+    /* Only the profiled LoadFile call uses this leaf relay. Restore the
+     * displaced movzx r9d,r12b, then tail-jump to a normal unwindable C wrapper.
+     * No stack or nonvolatile-register changes in the relay. */
+    copy(diag_page+19*32,"\x45\x0f\xb6\xcc",4);
+    absjump(diag_page+19*32+4,diag_wrapper(19));
 }
 /* Prepare without touching Panacea. Called BEFORE installing the size detour,
  * because the diagnostic profile also validates the original size prologue. */
@@ -132,7 +143,7 @@ static __attribute__((noinline)) int diag_prepare(u8 *base,u8 *size_fn){
         if(!diag_page&&origin+d<0x00007fff00000000ULL)diag_page=VirtualAlloc((void *)(origin+d),4096,0x3000,4);
     }
     if(!diag_page)return 0;
-    for(unsigned i=0;i<19;i++)absjump(diag_page+i*16,diag_wrapper(i));
+    diag_make_relays();
     diag_patch_count=sizeof(diag_sites)/sizeof(*diag_sites);
     for(unsigned i=0;i<diag_patch_count;i++){
         const DiagSite *s=&diag_sites[i];u8 *pc=base+s->rva;
@@ -140,13 +151,24 @@ static __attribute__((noinline)) int diag_prepare(u8 *base,u8 *size_fn){
          * keep relay construction independent of assumptions in the table. */
         unsigned off=s->kind==0?1:(s->kind==1?2:3),len=off+4;
         if((s->kind==0&&pc[0]!=0xe8)||(s->kind==1&&(pc[0]!=0xff||pc[1]!=0x15))||(s->kind==2&&(pc[0]!=0x48||pc[1]!=0x8b||pc[2]!=0x05)))goto failed;
-        u8 *relay=diag_page+s->wrapper*16+(s->kind?6:0);
+        u8 *relay=diag_page+s->wrapper*32+(s->kind?6:0);
         int64_t rel=relay-(pc+len);if(!fits32(rel))goto failed;
-        diag_patches[i]=(DiagPatch){pc+off,*(int32_t *)(pc+off),(int32_t)rel,0,0};
+        DiagPatch *p=&diag_patches[i];p->disp=pc+off;p->length=4;
+        copy(p->saved,pc+off,4);int32_t displacement=(int32_t)rel;copy(p->replacement,&displacement,4);
+    }
+    /* Replace exactly mov rax,[rbx]; movzx r9d,r12b (7 bytes) with
+     * lea rax,[rip+relay]. The original CALL RAX and Hook Patch/Unpatch remain.
+     * The full LoadFile profile above validates this entire instruction span. */
+    {
+        DiagPatch *p=&diag_patches[diag_patch_count++];
+        p->disp=base+0x10286;p->length=7;copy(p->saved,p->disp,7);
+        int64_t rel=(diag_page+19*32)-(p->disp+7);if(!fits32(rel))goto failed;
+        copy(p->replacement,"\x48\x8d\x05",3);int32_t d=(int32_t)rel;copy(p->replacement+3,&d,4);
     }
     for(unsigned i=0;i<7;i++)diag_direct[i]=base+diag_callees[i];
+    diag_load_hook_slot=(void ***)(base+0x5fdd0);
     diag_attrs_slot=(void **)(base+0x460f0);diag_info_slot=(void **)(base+0x5fcc0);diag_register_slot=(void **)(base+0x5fd80);
-    u32 old;if(!VirtualProtect(diag_page,4096,0x20,&old)||!FlushInstructionCache((void *)(intptr_t)-1,diag_page,19*16))goto failed;
+    u32 old;if(!VirtualProtect(diag_page,4096,0x20,&old)||!FlushInstructionCache((void *)(intptr_t)-1,diag_page,20*32))goto failed;
     return 1;
 failed:VirtualFree(diag_page,0,0x8000);diag_page=0;diag_patch_count=0;return 0;
 }
@@ -157,20 +179,20 @@ static __attribute__((noinline)) int diag_install(void){
     unsigned ready=0;u32 ignored;
     for(;ready<diag_patch_count;ready++){
         DiagPatch *p=&diag_patches[ready];
-        if(*(int32_t *)p->disp!=p->saved||!VirtualProtect(p->disp,4,0x40,&p->old))goto rollback;
+        if(!equal(p->disp,p->saved,p->length)||!VirtualProtect(p->disp,p->length,0x40,&p->old))goto rollback;
         p->writable=1;
     }
-    for(unsigned i=0;i<diag_patch_count;i++)copy(diag_patches[i].disp,&diag_patches[i].replacement,4);
-    for(unsigned i=0;i<diag_patch_count;i++)if(!FlushInstructionCache((void *)(intptr_t)-1,diag_patches[i].disp,4))goto rollback;
-    for(unsigned i=diag_patch_count;i;i--){DiagPatch *p=&diag_patches[i-1];if(!VirtualProtect(p->disp,4,p->old,&ignored))goto rollback;p->writable=0;}
+    for(unsigned i=0;i<diag_patch_count;i++)copy(diag_patches[i].disp,diag_patches[i].replacement,diag_patches[i].length);
+    for(unsigned i=0;i<diag_patch_count;i++)if(!FlushInstructionCache((void *)(intptr_t)-1,diag_patches[i].disp,diag_patches[i].length))goto rollback;
+    for(unsigned i=diag_patch_count;i;i--){DiagPatch *p=&diag_patches[i-1];if(!VirtualProtect(p->disp,p->length,p->old,&ignored))goto rollback;p->writable=0;}
     negative_active=1;diag_active=1;return 1;
 rollback:
     /* Keep relay memory pinned if restoring a page fails: never free a target
      * that a surviving call site might still reference. Wrappers still forward
      * correctly with telemetry disabled. Report this exceptional state. */
-    for(unsigned i=0;i<ready;i++){DiagPatch *p=&diag_patches[i];u32 temp;if(VirtualProtect(p->disp,4,0x40,&temp)){copy(p->disp,&p->saved,4);FlushInstructionCache((void *)(intptr_t)-1,p->disp,4);}}
-    for(unsigned i=ready;i;i--){DiagPatch *p=&diag_patches[i-1];VirtualProtect(p->disp,4,p->old,&ignored);}
-    log_line("DIAG DISABLED: call-site transaction failed; original displacements restored where writable; relay retained for safe forwarding");return 0;
+    for(unsigned i=0;i<ready;i++){DiagPatch *p=&diag_patches[i];u32 temp;if(VirtualProtect(p->disp,p->length,0x40,&temp)){copy(p->disp,p->saved,p->length);FlushInstructionCache((void *)(intptr_t)-1,p->disp,p->length);}}
+    for(unsigned i=ready;i;i--){DiagPatch *p=&diag_patches[i-1];VirtualProtect(p->disp,p->length,p->old,&ignored);}
+    log_line("DIAG DISABLED: call-site transaction failed; original instruction bytes restored where writable; relay retained for safe forwarding");return 0;
 }
 static void diag_set_path(void){
     unsigned n=0,last=0;while(log_path[n]&&n<490){if(log_path[n]=='/'||log_path[n]=='\\')last=n+1;n++;}
@@ -181,20 +203,41 @@ static void diag_write(const char *b,u32 n){
     void *file=diag_output?diag_output:CreateFileW(diag_path,4,3,0,4,0x80,0);if(file==(void *)(intptr_t)-1){INC(diag_write_errors);return;}
     while(n){u32 wrote=0;if(!WriteFile(file,b,n,&wrote,0)||!wrote||wrote>n){INC(diag_write_errors);break;}b+=wrote;n-=wrote;}if(!diag_output)CloseHandle(file);
 }
-static const char *diag_phase(unsigned p){switch(p){case D_ATTR:return "raw_attributes";case D_PATH:return "path_lookup";case D_INFO:return "package_lookup";case D_OPEN:return "open";case D_READ:return "read";case D_SEEK:return "seek";case D_TELL:return "tell";case D_CLOSE:return "close";case D_REMASTER:return "remastered";case D_REGISTER:return "register";default:return "size_total";}}
+static const char *diag_phase(unsigned p){switch(p){case D_ATTR:return "raw_attributes";case D_PATH:return "path_lookup";case D_INFO:return "package_lookup";case D_OPEN:return "open";case D_READ:return "read";case D_SEEK:return "seek";case D_TELL:return "tell";case D_CLOSE:return "close";case D_REMASTER:return "remastered";case D_REGISTER:return "register";case D_ORIGINAL_LOAD:return "original_load";default:return "size_total";}}
 static void diag_header(void){
-    diag_set_path();char b[600];unsigned n=text(b,0,"KH2AssetLoadDiag p2; call-site profile=panacea-msvc-1; ticks are QPC wall time; frequency=");n=number(b,n,diag_freq);n=text(b,n," origin=");n=number(b,n,diag_origin);n=text(b,n,"\r\nScopes: load=LoadFile only; size=original GetFileSize (miss/fallback). remastered is inclusive; size_total includes size phases. Do not sum nested phases.\r\n");diag_write(b,n);
+    diag_set_path();char b[600];unsigned n=text(b,0,"KH2AssetLoadDiag d3; call-site profile=panacea-msvc-1; ticks are QPC wall time; frequency=");n=number(b,n,diag_freq);n=text(b,n," origin=");n=number(b,n,diag_origin);n=text(b,n,"\r\nScopes: load=LoadFile only; size=original GetFileSize (miss/fallback). remastered is inclusive; size_total includes size phases. Do not sum nested phases.\r\n");diag_write(b,n);
 }
 static __attribute__((noinline)) void diag_flush(void){
     if(!diag_active)return;
     diag_output=CreateFileW(diag_path,4,3,0,4,0x80,0);
     if(diag_output==(void *)(intptr_t)-1){diag_output=0;INC(diag_write_errors);return;}
     u64 now=diag_now();char b[1100];unsigned n=text(b,0,"BUCKET elapsed_ticks=");n=number(b,n,now>=diag_origin?now-diag_origin:0);
-    n=text(b,n," dropped=");n=number(b,n,READ(diag_dropped));n=text(b,n," untracked=");n=number(b,n,READ(diag_untracked));n=text(b,n," clock_errors=");n=number(b,n,READ(diag_clock_errors));n=text(b,n," write_errors=");n=number(b,n,READ(diag_write_errors));n=text(b,n,"\r\n");diag_write(b,n);
+    n=text(b,n," dropped=");n=number(b,n,READ(diag_dropped));n=text(b,n," untracked=");n=number(b,n,READ(diag_untracked));n=text(b,n," clock_errors=");n=number(b,n,READ(diag_clock_errors));n=text(b,n," write_errors=");n=number(b,n,READ(diag_write_errors));n=text(b,n," detail_dropped=");n=number(b,n,READ(detail_dropped));n=text(b,n," cpu_errors=");n=number(b,n,READ(detail_cpu_errors));n=text(b,n,"\r\n");diag_write(b,n);
     for(unsigned i=0;i<DIAG_ROWS;i++){
         DiagRow row;if(!diag_try(&diag_lock))continue;
         row=diag_rows[i];memset(&diag_rows[i],0,sizeof(row));diag_unlock(&diag_lock);if(!row.used)continue;
         n=text(b,0,row.scope?"PHASE scope=size phase=":"PHASE scope=load phase=");n=text(b,n,diag_phase(row.phase));n=text(b,n," count=");n=number(b,n,row.count);n=text(b,n," total_ticks=");n=number(b,n,row.ticks);n=text(b,n," max_ticks=");n=number(b,n,row.max);n=text(b,n," unsuccessful=");n=number(b,n,row.unsuccessful);n=text(b,n," bytes=");n=number(b,n,row.bytes);n=text(b,n," file=\"");n=text(b,n,row.name);n=text(b,n,"\"\r\n");diag_write(b,n);
     }
+    detail_flush();
     CloseHandle(diag_output);diag_output=0;
+}
+
+/* The worker drains a bounded number; each event is copied under a try-lock.
+ * No logger lock is held while performing file I/O. */
+static void detail_flush(void){
+    for(unsigned i=0;i<DETAIL_EVENTS;i++){
+        DetailEvent e;
+        if(!diag_try(&detail_lock))break;
+        if(!detail_count){diag_unlock(&detail_lock);break;}
+        e=detail_events[detail_read];detail_read=(detail_read+1)%DETAIL_EVENTS;detail_count--;
+        diag_unlock(&detail_lock);
+        char b[1100];unsigned n=text(b,0,"DETAIL phase=");n=text(b,n,diag_phase(e.phase));
+#define DETAIL_FIELD(label,value) n=text(b,n,label);n=number(b,n,value)
+        DETAIL_FIELD(" thread=",e.thread);DETAIL_FIELD(" start_qpc=",e.start);DETAIL_FIELD(" end_qpc=",e.end);
+        DETAIL_FIELD(" wall_ticks=",e.end-e.start);DETAIL_FIELD(" cpu_valid=",e.cpu_valid);
+        DETAIL_FIELD(" kernel_100ns=",e.kernel);DETAIL_FIELD(" user_100ns=",e.user);
+        n=text(b,n," result=");if(e.result<0){b[n++]='-';n=number(b,n,(u64)(-(int64_t)e.result));}else n=number(b,n,(u64)e.result);
+        n=text(b,n," file=\"");n=text(b,n,e.name);n=text(b,n,"\"\r\n");diag_write(b,n);
+#undef DETAIL_FIELD
+    }
 }

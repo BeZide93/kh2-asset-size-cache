@@ -31,7 +31,7 @@ for folder in ("docs", "src", "tests", "scripts"):
 assert len(files) == len(set(files))
 out = ROOT / "dist"
 out.mkdir(exist_ok=True)
-archive = out / "KH2-Asset-Size-Cache-v1-p2.zip"
+archive = out / "KH2-Asset-Size-Cache-v1-d3.zip"
 with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
     checksums = []
     for name in files:
