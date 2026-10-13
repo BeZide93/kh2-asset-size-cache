@@ -23,7 +23,10 @@ jobs:
           sudo apt-get install -y gcc binutils
           python3 -m pip install -r requirements.txt
       - name: Build Windows x64 DLL and verify PE
-        run: python3 build.py
+        run: |
+          cp KH2AssetSizeCache.dll "$RUNNER_TEMP/committed.dll"
+          python3 build.py
+          cmp "$RUNNER_TEMP/committed.dll" KH2AssetSizeCache.dll
       - name: Execute compiled cache and ABI tests
         run: |
           gcc -O2 -pthread -I build tests/harness.c -o build/harness
@@ -32,6 +35,10 @@ jobs:
         run: |
           gcc -O2 -pthread -I build tests/discovery.c -o build/discovery
           build/discovery KH2AssetSizeCache.dll
+      - name: Execute diagnostic ABI and rollback tests
+        run: |
+          gcc -O2 -pthread -I build tests/diagnostics.c -o build/diagnostics
+          build/diagnostics KH2AssetSizeCache.dll
       - name: Check repeat-build reproducibility
         run: |
           cp KH2AssetSizeCache.dll "$RUNNER_TEMP/first-build.dll"
@@ -44,7 +51,7 @@ jobs:
           name: KH2-Asset-Size-Cache
           if-no-files-found: error
           path: |
-            dist/KH2-Asset-Size-Cache-v1.zip
+            dist/KH2-Asset-Size-Cache-v1-d1.zip
             dist/SHA256SUMS.txt
             KH2AssetSizeCache.dll
             BUILD-MANIFEST.json

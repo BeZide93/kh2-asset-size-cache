@@ -66,6 +66,7 @@ static u64 generation,candidates,hits,refreshes,bypasses,contention,no_package,i
 static u32 fallback_active;
 #define INC(x) __atomic_fetch_add(&(x),1,__ATOMIC_ACQ_REL)
 #define READ(x) __atomic_load_n(&(x),__ATOMIC_ACQUIRE)
+#include "diagnostics.h"
 static int lock_cache(void){return !__atomic_exchange_n(&cache.lock,1,__ATOMIC_ACQUIRE);}
 static void unlock_cache(void){__atomic_store_n(&cache.lock,0,__ATOMIC_RELEASE);}
 static unsigned lower(unsigned c){if(c>='A'&&c<='Z')c+=32;if(c=='\\')c='/';return c;}
@@ -91,7 +92,7 @@ static CacheEntry *select_entry(const char *name,unsigned len,u32 hash,u64 now){
  * at BOTH ends, and refuse reuse/publication while such a call is in flight. */
 static int fallback_size(void *self,const char *name,u32 incoming){
     INC(fallback_active);INC(generation);SetLastError(incoming);
-    int r=previous_size(self,name);u32 error=GetLastError();
+    int r=diag_size(previous_size,self,name);u32 error=GetLastError();
     INC(generation);__atomic_fetch_sub(&fallback_active,1,__ATOMIC_ACQ_REL);
     SetLastError(error);return r;
 }
@@ -120,7 +121,7 @@ static int cached_size(void *self,const char *name){
     /* Misses use the original routine, retaining all of its side effects.
      * Never publish zero/negative results, unstable metadata, or a result
      * overlapping an unlocked fallback. Hits never extend the fixed TTL. */
-    SetLastError(incoming);int r=previous_size(self,name);u32 after=GetLastError();
+    SetLastError(incoming);int r=diag_size(previous_size,self,name);u32 after=GetLastError();
     if(r>0&&pkg&&!READ(fallback_active)&&gen==READ(generation)){
         PackageKey after_key;package_key(&after_key,pkg);
         if(equal(&key,&after_key,sizeof(key))){
@@ -173,11 +174,11 @@ static int kh2_executable(void){
     const char want[]="kingdom hearts ii final mix.exe";unsigned i=0;while(want[i]&&pos+i<n){if(lower(path[pos+i])!=(u8)want[i])return 0;i++;}return !want[i]&&pos+i==n;
 }
 static u32 stats_worker(void *unused){
-    (void)unused;for(;;){Sleep(5000);char b[768];unsigned n=0;n=text(b,n,"STATS cumulative candidates=");n=number(b,n,READ(candidates));n=text(b,n," hits=");n=number(b,n,READ(hits));n=text(b,n," refresh=");n=number(b,n,READ(refreshes));n=text(b,n," expired=");n=number(b,n,READ(expired));n=text(b,n," changed=");n=number(b,n,READ(changed));n=text(b,n," evicted=");n=number(b,n,READ(evicted));n=text(b,n," bypass=");n=number(b,n,READ(bypasses));n=text(b,n," contention=");n=number(b,n,READ(contention));n=text(b,n," no_package=");n=number(b,n,READ(no_package));n=text(b,n," nonpositive=");n=number(b,n,READ(invalid_size));b[n++]='\r';b[n++]='\n';log_buffer(b,n);}return 0;
+    (void)unused;for(;;){Sleep(5000);diag_flush();char b[768];unsigned n=0;n=text(b,n,"STATS cumulative candidates=");n=number(b,n,READ(candidates));n=text(b,n," hits=");n=number(b,n,READ(hits));n=text(b,n," refresh=");n=number(b,n,READ(refreshes));n=text(b,n," expired=");n=number(b,n,READ(expired));n=text(b,n," changed=");n=number(b,n,READ(changed));n=text(b,n," evicted=");n=number(b,n,READ(evicted));n=text(b,n," bypass=");n=number(b,n,READ(bypasses));n=text(b,n," contention=");n=number(b,n,READ(contention));n=text(b,n," no_package=");n=number(b,n,READ(no_package));n=text(b,n," nonpositive=");n=number(b,n,READ(invalid_size));b[n++]='\r';b[n++]='\n';log_buffer(b,n);}return 0;
 }
 EXPORT void OnInit(const uint16_t *folder){
     if(__atomic_exchange_n(&init_once,1,__ATOMIC_ACQ_REL))return;
-    u32 error=GetLastError();set_log_path(folder);log_line("KH2AssetSizeCache v1; auto-discovery; positive size cache; slots=256; TTL=1000 ms; all file paths up to 259 bytes; package lookup retained");
+    u32 error=GetLastError();set_log_path(folder);log_line("KH2AssetSizeCache v1-d1; auto-discovery; positive size cache; slots=256; TTL=1000 ms; all file paths up to 259 bytes; package lookup retained");
     if(!kh2_executable()){log_line("DISABLED: not the supported KH2 executable");goto done;}
     static const uint16_t version[]={'v','e','r','s','i','o','n','.','d','l','l',0};u8 *base=GetModuleHandleW(version);
     u8 *game=GetModuleHandleW(0);Discovery detected;int result=discover_panacea(base,game,&detected);
@@ -186,8 +187,11 @@ EXPORT void OnInit(const uint16_t *folder){
     game_begin=(u64)game;game_end=game_begin+game_image.size;info_slot=detected.info;
     char found[192];unsigned n=text(found,0,"DETECTED: size_rva=");n=number(found,n,(u64)(detected.size_fn-base));n=text(found,n," info_slot_rva=");n=number(found,n,(u64)((u8 *)info_slot-base));n=text(found,n," profile=msvc-size-1\r\n");log_buffer(found,n);
     void *pin=0;if(!GetModuleHandleExW(5,(const uint16_t *)(uintptr_t)OnInit,&pin)||!GetModuleHandleExW(5,(const uint16_t *)base,&pin)){log_line("DISABLED: module lifetime pin failed");goto done;}
+    int diagnostic_ready=diag_prepare(base,detected.size_fn);
     if(!install_hook(detected.size_fn)){log_line("DISABLED: trampoline installation failed; original entry retained/restored");goto done;}
     installed=1;log_line("INSTALLED: Panacea GetFileSize wrapped; package lookup retained on cache candidates");
+    if(diagnostic_ready&&diag_install()){diag_header();log_line("DIAG INSTALLED: LoadFile and original GetFileSize phases -> KH2AssetLoadDiag.log");}
+    else log_line("DIAG DISABLED: unsupported diagnostic profile or installation failure; size cache remains active");
     void *thread=CreateThread(0,0,stats_worker,0,0,0);if(thread)CloseHandle(thread);else log_line("WARNING: stats worker unavailable; cache remains active");
 done:SetLastError(error);
 }

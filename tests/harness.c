@@ -54,8 +54,11 @@ static RF *MS lookup(u64 target_,u64 *base,void *hist){assert((void *)target_==l
 static u8 MS add_(RF *rf,u32 count,u64 base){assert(base==(u64)page&&count==1&&rf->begin==0&&rf->end==34&&rf->unwind==256);assert(page[256]==1&&page[257]==20);addcalls++;return fail_mode!=4;}
 static u8 MS delete_(RF *rf){assert(rf==(RF *)(page+1024));delcalls++;return fail_mode!=9;}
 static u8 *loadpe(const char *path,size_t *sz){FILE *f=fopen(path,"rb");assert(f);u8 hdr[4096];assert(fread(hdr,1,4096,f)==4096);u32 nt=*(u32 *)(hdr+0x3c);unsigned ns=*(uint16_t *)(hdr+nt+6),opt=*(uint16_t *)(hdr+nt+20);*sz=*(u32 *)(hdr+nt+24+56);u8 *mem=mmap(NULL,*sz,7,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);assert(mem!=MAP_FAILED);memcpy(mem,hdr,*(u32 *)(hdr+nt+24+60));for(unsigned i=0;i<ns;i++){u8 *s=hdr+nt+24+opt+40*i;u32 rva=*(u32 *)(s+12),rawsz=*(u32 *)(s+16),raw=*(u32 *)(s+20);if(rawsz){assert(!fseek(f,raw,SEEK_SET));assert(fread(mem+rva,1,rawsz,f)==rawsz);}}fclose(f);return mem;}
+static int MS qpc(int64_t *n){*n=100;return 1;}
+static int MS qpf(int64_t *n){*n=0;return 0;}
 static void bind(void){
 #define BIND(n,fn) *(void **)(im+IAT_##n)=(void *)(fn)
+ BIND(QueryPerformanceCounter,qpc);BIND(QueryPerformanceFrequency,qpf);
  BIND(GetLastError,geterr);BIND(SetLastError,seterr);BIND(GetTickCount64,tick);BIND(GetCurrentThreadId,threadid);BIND(GetModuleHandleW,module);BIND(GetModuleFileNameW,modulename);BIND(GetModuleHandleExW,pin);BIND(CreateFileW,createfile);BIND(WriteFile,write_);BIND(CloseHandle,close_);BIND(CreateThread,thread_);BIND(Sleep,sleep_);BIND(DisableThreadLibraryCalls,disable);BIND(VirtualAlloc,alloc_);BIND(VirtualFree,free_);BIND(VirtualProtect,protect_);BIND(FlushInstructionCache,flush_);BIND(RtlLookupFunctionEntry,lookup);BIND(RtlAddFunctionTable,add_);BIND(RtlDeleteFunctionTable,delete_);
  for(unsigned i=0;i<sizeof(chunks)/sizeof(*chunks);i++){unsigned flags=chunks[i].flags;int p=PROT_READ;if(flags&0x80000000U)p|=PROT_WRITE;if(flags&0x20000000U)p|=PROT_EXEC;assert(!mprotect(im+chunks[i].rva,(chunks[i].size+4095)&~4095U,p));}
 }
