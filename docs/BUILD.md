@@ -34,7 +34,9 @@ build/diagnostics KH2AssetSizeCache.dll /absolute/path/to/original/version.dll
 `build.py` checks the DLL and creates `BUILD-MANIFEST.json`, `PE-EXPORTS.txt` and
 the test header. Packaging creates `dist/KH2-Asset-Size-Cache-v1-d1.zip` with the full
 source/repository layout and OpenKH manifest, plus `dist/SHA256SUMS.txt`.
-Generated build files, PDBs and import libraries are excluded from the ZIP.
+Unused CodeView/PDB metadata is stripped at link time so different checkout
+paths produce the same DLL. Generated build files, PDBs and import libraries
+are excluded from the ZIP.
 
 ## GitHub Actions
 

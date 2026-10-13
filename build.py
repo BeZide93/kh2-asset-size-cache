@@ -5,7 +5,7 @@ R=pathlib.Path(__file__).resolve().parent;B=R/'build';B.mkdir(exist_ok=True)
 def run(*a):return subprocess.check_output([str(x) for x in a],text=True)
 flags=['-target','x86_64-windows-gnu','-O2','-g0','-ffreestanding','-fno-builtin','-fno-jump-tables','-fno-stack-protector','-mno-stack-arg-probe','-funwind-tables']
 for src,obj in [('fix.c','fix.o'),('hde/hde64.c','hde64.o')]:run(sys.executable,'-m','ziglang','cc',*flags,'-c',R/'src'/src,'-o',B/obj)
-run(sys.executable,'-m','ziglang','cc','-target','x86_64-windows-gnu','-shared','-nostdlib','-Wl,--entry,DllMain',B/'fix.o',B/'hde64.o','-lkernel32','-o',R/'KH2AssetSizeCache.dll')
+run(sys.executable,'-m','ziglang','cc','-target','x86_64-windows-gnu','-shared','-nostdlib','-Wl,--entry,DllMain','-Wl,--strip-debug',B/'fix.o',B/'hde64.o','-lkernel32','-o',R/'KH2AssetSizeCache.dll')
 f=R/'KH2AssetSizeCache.dll'
 data=bytearray(f.read_bytes());p=pefile.PE(data=bytes(data))
 # Zig's PE linker inserts wall-clock timestamps in COFF/debug metadata.
@@ -57,6 +57,8 @@ for d in p.DIRECTORY_ENTRY_IMPORT:
 for n in ['OnInit','DllMain','discover_panacea','cached_size','install_hook','previous_size','info_slot','game_begin','game_end','cache','generation','hits','refreshes','candidates','contention','no_package','invalid_size','evicted','fallback_active','diag_prepare','diag_profile_ok','diag_install','diag_flush','diag_active','diag_direct','diag_attrs_slot','diag_register_slot','diag_info_slot','diag_patch_count','diag_patches','diag_freq','diag_origin','diag_dropped','diag_untracked','diag_lock','diag_stream_lock','diag_rows','diag_page','diag_open_0','diag_read_0','diag_seek_0','diag_tell_0','diag_close_0','diag_attrs_0','diag_transform_0','diag_info_0','diag_register','diag_remaster','diag_size']:h+=f'#define RVA_{n} {addresses[n]}\n'
 # Currently all compiled code/data is PC-relative or zero-initialized.
 assert not p.OPTIONAL_HEADER.DATA_DIRECTORY[5].Size
+# The unused CodeView/PDB identifier otherwise depends on the build directory.
+assert not p.OPTIONAL_HEADER.DATA_DIRECTORY[6].Size
 (B/'generated.h').write_text(h)
 man={'file':f.name,'sha256':hashlib.sha256(data).hexdigest(),'size':len(data),'exports':['OnInit'],'imports':['KERNEL32.dll'],'entry':hex(p.OPTIONAL_HEADER.AddressOfEntryPoint),'symbols':addresses,'runtime_functions':len(p.DIRECTORY_ENTRY_EXCEPTION),'game_tested':False}
 (R/'BUILD-MANIFEST.json').write_text(json.dumps(man,indent=2)+'\n')
