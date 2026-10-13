@@ -1,4 +1,4 @@
-# Loading-stall diagnostics (v1-p2)
+# Loading-stall diagnostics (v1-d3)
 
 The d1 instrumentation is retained alongside the [negative-path optimization](NEGATIVE_PATHS.md). The 256-entry, one-second positive size cache stays active
 with the same validity rules. This build does not skip loads, resource
@@ -88,8 +88,10 @@ import must match before any diagnostic patch is attempted. Unknown builds
 disable the detailed diagnostics and new path cache, retaining a supported size cache. This is not a promise to support every future
 Panacea release without updating a diagnostic profile.
 
-The add-on redirects 34 validated call-site operands to nearby leaf jump relays.
-It does not detour these functions' prologues or replace their unwind metadata.
+The add-on redirects 34 validated call-site operands and one seven-byte fallback target-selection span to nearby leaf jump relays.
+The new span selects a leaf relay that restores the HD argument and tail-jumps
+to the original-load wrapper. The existing Hook object, Patch/Unpatch calls and
+original target remain intact. It does not detour these functions' prologues or replace their unwind metadata.
 Typed wrappers preserve arguments, results and Win32 `LastError`; indirect game
 and import slots are read again on each call. Modules and relays stay pinned.
 Installation occurs during `OnInit`, before gameplay; failed transactions restore
@@ -101,3 +103,6 @@ Local profile checks also pass against the supplied original Panacea, our stable
 proxy and our performance-diagnostic proxy, with the cache detour installed.
 Those external DLLs are not distributed or used in CI. Actual KH2 under Proton
 Experimental ARM64 still needs the user test above.
+
+See [d3 load details](LOAD_DETAILS.md) for the additional original-load phase,
+slow-call records and thread CPU timing limitations.

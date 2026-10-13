@@ -1,53 +1,45 @@
-# Testbuild v1-p2: Cache für fehlende Dateipfade
+# Test von v1-d3
 
-Dieser Patch speichert bestätigte fehlende Dateipfade für fünf Sekunden und
-vermeidet damit wiederholte erfolglose Pfadprüfungen. Der bisherige Größen-Cache
-und die Diagnose bleiben aktiv.
-**Die vorhandene `version.dll` bleibt erhalten.**
+Dies ist ein Diagnose-Patch. Er behält die beiden funktionierenden Caches bei
+und misst zusätzlich den originalen Ladeweg sowie die Thread-CPU-Zeit langer
+Lade- und Registrierungsaufrufe. Eine weitere FPS-Verbesserung ist noch nicht
+das Ziel dieses Builds.
 
-1. Spiel beenden. Die bisherige `KH2AssetSizeCache.dll` außerhalb aller
-   Mod-Ladeordner sichern und durch die neue DLL in `mod/kh2/dll` ersetzen.
-   Erst die Mods in OpenKH bauen, dann die DLL kopieren. Alternativ die
-   `KH2-Asset-Size-Cache-v1-p2.zip` aus `packages` als lokalen Mod installieren.
-2. Re:Fined, andere Mods und Einstellungen unverändert lassen. Keinen
-   zusätzlichen `KH2RikuSizeFix.dll` laden.
-3. Bei beendetem Spiel die alten unten genannten Logs verschieben oder löschen.
-4. Denselben Spielstand laden. Fünfmal zwischen denselben Räumen hin- und
-   herwechseln und dieselben Gegner mindestens dreimal spawnen lassen.
-   Wiederholungen einmal möglichst direkt und einmal nach mindestens zehn Sekunden
-   durchführen, um Verhalten innerhalb und außerhalb der Cache-Gültigkeit zu prüfen.
-   Die stärksten Pausen mit Raum/Gegner und ungefährer Zeit notieren.
-   Auch Rikus Session, Menüs, Texturen und Ton kurz prüfen.
-5. Insgesamt etwa 3–5 Minuten testen, nach dem letzten Ereignis mindestens
-   zehn Sekunden warten und das Spiel normal beenden.
+1. KH2 vollständig schließen. Die bisherige KH2AssetSizeCache.dll außerhalb
+   aller Mod-Ladeordner sichern.
+2. Die neue DLL nach dem letzten OpenKH-Mod-Build nach
+   `mod/kh2/dll/KH2AssetSizeCache.dll` kopieren. Alternativ das d3-ZIP als lokale
+   OpenKH-Mod importieren. Ein normaler GitHub-Import von main enthält diesen
+   noch nicht gemergten Teststand nicht.
+3. version.dll, Re:Fined, andere Mods und Einstellungen unverändert lassen.
+   Nur eine KH2AssetSizeCache.dll laden; KH2RikuSizeFix.dll nicht zusätzlich laden.
+4. Die vier bisherigen Logs bei geschlossenem Spiel verschieben oder löschen.
+   Nach dem Start muss KH2AssetSizeCache.log `v1-d3`, `PATHCACHE INSTALLED`,
+   `DIAG INSTALLED` und `DETAIL INSTALLED` enthalten.
+5. Den gleichen Spielstand wie beim p2-Test laden. Die auffälligen Raumwechsel
+   fünfmal wiederholen, möglichst dieselbe Strecke mit eh03/eh04/eh06 wie zuvor.
+   Die gleichen Gegner mindestens dreimal spawnen lassen. Raum/Gegner und
+   ungefährer Zeitpunkt besonders langer Pausen helfen bei der Zuordnung.
+6. Texturen, Sound, Menüs und Riku/Session kurz prüfen. Etwa 3–5 Minuten spielen;
+   nach dem letzten Ereignis zehn Sekunden warten und normal beenden.
 
-Bitte diese vier Logs **aus demselben Testlauf** schicken:
+Bitte diese vier frischen Logs aus demselben Lauf schicken:
 
-- **`KH2AssetLoadDiag.log`** neben der neuen DLL;
-- `KH2AssetSizeCache.log` daneben;
-- `panacea_riku_perf.log` der bisherigen Diagnose-Panacea;
-- `panacea_hookfix.log` zur Prüfung der Initialisierung.
+- KH2AssetLoadDiag.log
+- KH2AssetSizeCache.log
+- panacea_riku_perf.log
+- panacea_hookfix.log
 
-Im Cache-Log müssen `INSTALLED:` und **`DIAG INSTALLED:`** sowie **`PATHCACHE INSTALLED:`** stehen. Bei
-`DIAG DISABLED` zuerst das Cache-Log schicken. Der Cache kann trotzdem aktiv
-sein; die zusätzliche Diagnose erkennt diesen Panacea-Build dann nicht oder
-konnte nicht installiert werden. Bei einer Warnung zum Statistik-Thread fehlen
-die regelmäßigen Log-Ausgaben. Einen frischen Proton-Log brauchen wir zusätzlich
-nur bei einem Absturz oder Startproblem.
+Im ersten Log erwarten wir `KH2AssetLoadDiag d3`,
+`PHASE scope=load phase=original_load` und bei langen Aufrufen
+`DETAIL phase=original_load` bzw. `DETAIL phase=register`.
+`cpu_valid=0` bitte ebenfalls melden; die Wall-Time bleibt dann auswertbar.
+Ohne Crash wird kein neuer Proton-Log benötigt. Bei einem Crash oder fehlendem
+Start zusätzlich den frischen Proton-Log schicken.
 
-`PATHCACHE`-Zeilen im Cache-Log zeigen `hits`, echte `queries` und `expired`.
-Die erste Prüfung eines Pfades und Prüfungen nach Ablauf der fünf Sekunden
-bleiben bestehen. Neue Dateien können für fünf Sekunden, bereits gespeicherte
-Größenantworten zusammen mit dem bisherigen Cache bis ungefähr sechs Sekunden
-verzögert sichtbar werden. Mods deshalb bei beendetem Spiel wechseln/bauen.
+Optional für später: derselbe Test ohne Asset-Mods, soweit der Spielstand und
+die Mod-Abhängigkeiten das zulassen. Logs getrennt aufbewahren. Für den ersten
+d3-Test bitte die bisherige Konfiguration beibehalten.
 
-Die neue Logdatei trennt Pfadsuche, Paketabfrage, Öffnen, Lesen, Seek/Tell,
-Schließen, Remastered-Verarbeitung und Ressourcenregistrierung. Die Werte sind
-Laufzeiten pro Datei/Phase; sie ersetzen keine FPS- oder Framezeitmessung.
-Die Diagnose selbst verursacht etwas Zusatzaufwand. Details und Grenzen stehen
-in [DIAGNOSTICS.md](DIAGNOSTICS.md).
-
-**Rollback:** Spiel beenden und die gesicherte Cache-DLL zurückkopieren. Bei
-OpenKH-Installation den Diagnose-Mod deaktivieren und den bisherigen Cache-Mod
-wieder aktivieren und bauen. Die stabile v1-ZIP bleibt in `packages` verfügbar.
-Keine Änderung an `version.dll`, Registry oder Spielstand erforderlich.
+Rollback: bei geschlossenem Spiel die gesicherte p2-DLL wiederherstellen,
+gegebenenfalls die Mod-Ausgabe neu bauen. version.dll bleibt unverändert.

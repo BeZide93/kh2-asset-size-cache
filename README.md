@@ -3,12 +3,13 @@
 Reduces repeated asset-size lookup overhead in **Kingdom Hearts II Final Mix**.
 Windows x64 Panacea add-on, including under Proton on ARM64.
 
-**Test build `v1-p2`:** adds a five-second cache for confirmed missing mod-file
-paths, targeting the expensive unsuccessful path searches measured in d1.
-Existing files are still queried normally. The original size cache and detailed
-load diagnostics remain active. Keep your existing `version.dll`.
-See [test steps and limitations](docs/NEGATIVE_PATHS.md),
-[German test instructions](docs/DIAGNOSE_DE.md), and [log findings](docs/FINDINGS_D1.md).
+**Diagnostic test build `v1-d3`:** retains both size and missing-path caches.
+Adds a separate measurement of the original game's `LoadFile` fallback, plus
+per-call wall time and current-thread CPU time for slow fallback and resource
+registration calls. This is a diagnostic step, not another claimed FPS fix.
+Keep your existing `version.dll`.
+See [German test instructions](docs/DIAGNOSE_DE.md) and
+[measurement details and limitations](docs/LOAD_DETAILS.md).
 
 ## How it works
 
@@ -31,8 +32,9 @@ loads and graphics-related stalls may remain.
    `mod/kh2/dll` folder; keep a backup outside the loader folders.
 2. In OpenKH Mod Manager, select **KH2 / PC** and install
    **`BeZide93/kh2-asset-size-cache`** from GitHub. Enable it and build/apply
-   your mods. Alternatively import the [complete ZIP](packages/KH2-Asset-Size-Cache-v1-p2.zip)
-   as a local mod. The ready-to-use DLL is included; no compilation is needed.
+   your mods. Alternatively import the [complete ZIP](packages/KH2-Asset-Size-Cache-v1-d3.zip)
+   as a local mod. For this unmerged test build, use the ZIP or PR branch DLL;
+   a normal GitHub install from main does not select this build. No compilation is needed.
 3. Alternatively copy `KH2AssetSizeCache.dll` directly into `mod/kh2/dll` after
    building your mods. Keep your existing Panacea `version.dll`.
 4. Restart the game. `KH2AssetSizeCache.log` beside the DLL should show

@@ -68,7 +68,7 @@ static void wrappers(const char *dll){
     assert(*(u64 *)(im+RVA_diag_dropped)>1);
     puts("PASS actual PE diagnostics: all typed phase wrappers preserve arguments, return values and LastError; measured durations/read bytes/failures; cache miss total; no per-call log I/O; one handle per flush; closed stream removal and nonblocking drops.");
 }
-typedef struct {u8 *disp;int32_t saved,replacement;u32 old;int writable;} Patch;
+typedef struct {u8 *disp;u8 saved[8],replacement[8];u32 length,old;int writable;} Patch;
 static unsigned diag_vp_count,diag_fail_at,diag_flush_count,diag_fail_flush;
 static int MS diag_protect(void *p,size_t n,u32 mode_,u32 *old){
     if(++diag_vp_count==diag_fail_at)return 0;
@@ -78,12 +78,13 @@ static int MS diag_flush_ic(void *process,const void *p,size_t n){assert(process
 static void transactions(const char *dll){
     for(unsigned failure=0;failure<4;failure++){
         fresh(dll);writable_imports();BIND(VirtualProtect,diag_protect);BIND(FlushInstructionCache,diag_flush_ic);
-        int32_t operands[]={11,22,33};Patch *p=(Patch *)(im+RVA_diag_patches);
-        for(unsigned i=0;i<3;i++)p[i]=(Patch){(u8 *)&operands[i],operands[i],(int32_t)(44+i),0,0};
+        u8 operands[3][12],saved[3][12];memset(operands,0xaa,sizeof(operands));memcpy(saved,operands,sizeof(saved));
+        Patch *p=(Patch *)(im+RVA_diag_patches);
+        for(unsigned i=0;i<3;i++){p[i].disp=operands[i]+1;p[i].length=i==1?7:4;memcpy(p[i].saved,p[i].disp,p[i].length);memset(p[i].replacement,0xbb,p[i].length);}
         *(unsigned *)(im+RVA_diag_patch_count)=3;*(void **)(im+RVA_diag_page)=im;
         diag_vp_count=diag_flush_count=0;diag_fail_at=failure==1?2:(failure==3?5:0);diag_fail_flush=failure==2?2:0;
         int r=FN(diag_install,int(MS *)(void))();assert(r==(failure==0));
-        for(unsigned i=0;i<3;i++)assert(operands[i]==(failure?(int32_t)(11*(i+1)):(int32_t)(44+i)));
+        for(unsigned i=0;i<3;i++){if(!failure)memset(saved[i]+1,0xbb,p[i].length);assert(!memcmp(operands[i],saved[i],12));}
         assert(*(u32 *)(im+RVA_diag_active)==(failure==0));
     }
     puts("PASS actual PE diagnostic transaction: success; protection-before-write failure, instruction-cache flush failure and protection-restore failure roll back all call displacements.");
@@ -104,15 +105,69 @@ static void profile(const char *dll,const char *fixture){
     u8 *cache_page=page;
     u8 *before=malloc(panacea_size);assert(before);memcpy(before,panacea,panacea_size);
     assert(FN(diag_install,int(MS *)(void))());
-    unsigned count=*(unsigned *)(im+RVA_diag_patch_count);assert(count==34);assert(!mprotect(panacea,panacea_size,7));
+    unsigned count=*(unsigned *)(im+RVA_diag_patch_count);assert(count==35);assert(!mprotect(panacea,panacea_size,7));
     Patch *patches=(Patch *)(im+RVA_diag_patches);
     for(unsigned i=0;i<count;i++){
-        Patch *p=&patches[i];assert(*(int32_t *)p->disp==p->replacement);
-        u8 *dest=p->disp+4+p->replacement;assert(dest>=relay_page&&dest<relay_page+19*16);
-        memcpy(p->disp,&p->saved,4);
+        Patch *p=&patches[i];assert(!memcmp(p->disp,p->replacement,p->length));
+        u8 *dest=p->disp+p->length+*(int32_t *)(p->replacement+(p->length==7?3:0));assert(dest>=relay_page&&dest<relay_page+20*32);
+        memcpy(p->disp,p->saved,p->length);
     }
     assert(!memcmp(before,panacea,panacea_size));free(before);
     assert(!munmap(cache_page,4096));assert(!munmap(relay_page,4096));page=NULL;assert(!munmap(panacea,panacea_size));panacea=NULL;
-    puts("PASS supplied Panacea: complete caller/callee profiles; all 34 relay operands installed; installed together with the cache detour; every other byte unchanged; patched and diagnostic version.dll variants supported without replacing them.");
+    puts("PASS supplied Panacea: complete caller/callee profiles; all 35 patch spans installed; installed together with the cache detour; every other byte unchanged; patched and diagnostic version.dll variants supported without replacing them.");
 }
-int main(int argc,char **argv){assert(argc>=2);wrappers(argv[1]);transactions(argv[1]);for(int i=2;i<argc;i++)profile(argv[1],argv[i]);puts("LIMIT: Linux MS-x64 harness, not a game/Proton ARM64 run. Full Panacea profile tests require a local DLL and are not part of CI.");return 0;}
+
+/* Execute the emitted leaf relay and the compiled original-load wrapper.
+ * The synthetic MS-x64 caller supplies R12b exactly as the profiled caller
+ * does; it deliberately clears R9 to require the relay to restore HD. */
+static unsigned cpu_reads,cpu_mode;
+static u8 expected_hd;
+static int MS cpu_(void *h,u64 *c,u64 *e,u64 *k,u64 *u){
+    assert(h==(void *)(intptr_t)-2);*c=*e=0;cpu_reads++;
+    *k=cpu_mode==2?100-cpu_reads:cpu_reads*100;
+    *u=cpu_reads*900;last_error=888;return cpu_mode!=1;
+}
+static int MS load_(void *s,const char *name,void *data,u8 hd){
+    assert(s==self&&name==target&&data==package&&hd==expected_hd);called();return 54321;
+}
+static int MS load_other_(void *s,const char *name,void *data,u8 hd){
+    assert(s==self&&name==target&&data==package&&hd==expected_hd);called();return -6;
+}
+static void details(const char *dll){
+    diagnostic_setup(dll);BIND(GetThreadTimes,cpu_);
+    static void *hook[5];static void **hook_slot=hook;
+    hook[0]=load_;hook[4]=(void *)0;*(void ****)(im+RVA_diag_load_hook_slot)=&hook_slot;
+    cpu_reads=cpu_mode=0;
+    u8 *relay=mmap(NULL,4096,7,MAP_PRIVATE|MAP_ANONYMOUS,-1,0);assert(relay!=MAP_FAILED);
+    *(void **)(im+RVA_diag_page)=relay;FN(diag_make_relays,void(MS *)(void))();
+    assert(!memcmp(relay+19*32,"\x45\x0f\xb6\xcc\xff\x25",6));
+    /* Build the caller on the same page, outside all relay slots. */
+    u8 caller[]={0x41,0x54,0x48,0x83,0xec,0x20,0x45,0x89,0xcc,
+        0x48,0x8d,0x05,0,0,0,0,0x45,0x31,0xc9,0xff,0xd0,
+        0x48,0x83,0xc4,0x20,0x41,0x5c,0xc3};
+    int32_t delta=(int32_t)(19*32-(1024+16));memcpy(caller+12,&delta,4);
+    memcpy(relay+1024,caller,sizeof(caller));assert(!mprotect(relay,4096,5));
+    typedef int(MS *Load)(void *,const char *,void *,u8);
+    for(expected_hd=0;expected_hd<2;expected_hd++)CHECK(((Load)(relay+1024))(self,target,package,expected_hd)==54321);
+    assert(hook[0]==load_&&creates==0&&cpu_reads==4); /* Hook is never replaced */
+    hook[0]=load_other_;expected_hd=1;CHECK(((Load)(relay+1024))(self,target,package,1)==-6);
+    CHECK(FN(diag_register,int(MS *)(const char *,int,void *))(target,12345,self)==-1);
+    FN(diag_flush,void(MS *)(void))();
+    assert(strstr(logtext,"phase=original_load count=3 total_ticks=213 max_ticks=71 unsuccessful=1"));
+    assert(strstr(logtext,"DETAIL phase=original_load thread=1 start_qpc="));
+    assert(strstr(logtext,"wall_ticks=71 cpu_valid=1 kernel_100ns=100 user_100ns=900 result=54321"));
+    assert(strstr(logtext,"result=-6")&&strstr(logtext,"DETAIL phase=register"));
+    loglen=0;logtext[0]=0;cpu_mode=1;
+    CHECK(((Load)(relay+1024))(self,target,package,1)==-6);
+    FN(diag_flush,void(MS *)(void))();assert(strstr(logtext,"cpu_valid=0 kernel_100ns=0 user_100ns=0"));
+    cpu_mode=2;CHECK(((Load)(relay+1024))(self,target,package,1)==-6);
+    assert(*(u64 *)(im+RVA_detail_cpu_errors)==2);
+    *(u32 *)(im+RVA_detail_lock)=1;CHECK(((Load)(relay+1024))(self,target,package,1)==-6);
+    *(u32 *)(im+RVA_detail_lock)=0;assert(*(u64 *)(im+RVA_detail_dropped)==1);
+    /* The event queue is bounded; dropping never skips the original call. */
+    cpu_mode=0;for(unsigned i=0;i<300;i++)CHECK(((Load)(relay+1024))(self,target,package,1)==-6);
+    assert(*(u32 *)(im+RVA_detail_count)==256&&*(u64 *)(im+RVA_detail_dropped)>1);
+    assert(!munmap(relay,4096));
+    puts("PASS actual PE original-load relay: HD false/true, target replacement, return/LastError, unchanged Hook object; per-call wall/CPU records, API failure/backward CPU counters, bounded queue and nonblocking drops.");
+}
+int main(int argc,char **argv){assert(argc>=2);wrappers(argv[1]);details(argv[1]);transactions(argv[1]);for(int i=2;i<argc;i++)profile(argv[1],argv[i]);puts("LIMIT: Linux MS-x64 harness, not a game/Proton ARM64 run. Full Panacea profile tests require a local DLL and are not part of CI.");return 0;}
