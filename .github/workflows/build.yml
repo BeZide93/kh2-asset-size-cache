@@ -1,0 +1,51 @@
+name: Build and validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc binutils
+          python3 -m pip install -r requirements.txt
+      - name: Build Windows x64 DLL and verify PE
+        run: python3 build.py
+      - name: Execute compiled cache and ABI tests
+        run: |
+          gcc -O2 -pthread -I build tests/harness.c -o build/harness
+          build/harness KH2AssetSizeCache.dll
+      - name: Execute discovery and rejection tests
+        run: |
+          gcc -O2 -pthread -I build tests/discovery.c -o build/discovery
+          build/discovery KH2AssetSizeCache.dll
+      - name: Check repeat-build reproducibility
+        run: |
+          cp KH2AssetSizeCache.dll "$RUNNER_TEMP/first-build.dll"
+          python3 build.py
+          cmp "$RUNNER_TEMP/first-build.dll" KH2AssetSizeCache.dll
+      - name: Validate and package OpenKH mod and source
+        run: python3 scripts/package_mod.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KH2-Asset-Size-Cache
+          if-no-files-found: error
+          path: |
+            dist/KH2-Asset-Size-Cache-v1.zip
+            dist/SHA256SUMS.txt
+            KH2AssetSizeCache.dll
+            BUILD-MANIFEST.json
+            PE-EXPORTS.txt

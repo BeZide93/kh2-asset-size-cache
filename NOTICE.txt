@@ -1,0 +1,12 @@
+KH2AssetSizeCache, 2026-10-13. Panacea add-on, not an official
+OpenKH release. New first-party source: Apache-2.0; see LICENSE-OpenKH.txt.
+HDE64 is separately licensed; see LICENSE-HDE.txt. HDE source originated from
+TsudaKageyu/minhook/src/hde, with BOM removal and stdint.h include adjustment.
+
+Integration reviewed against OpenKH/OpenKh:
+  OpenKh.Research.Panacea/Panacea.cpp (LoadDLLs, GetFileSize)
+  OpenKh.Research.Panacea/KingdomApi.h (PackageFile layout)
+  https://github.com/OpenKH/OpenKh
+
+The recognition fixture contains the OpenKH Panacea GetFileSize routine and
+constants used under Apache-2.0; its PE layout is synthetic.

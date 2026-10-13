@@ -1,0 +1,12 @@
+/build/
+/dist/
+*.pdb
+*.lib
+*.o
+*.exe
+/BUILD-MANIFEST.json
+/PE-EXPORTS.txt
+__pycache__/
+*.log
+*.dmp
+.venv/

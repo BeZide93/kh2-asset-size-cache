@@ -1,0 +1,12 @@
+title: KH2 Asset Size Cache
+originalAuthor: BeZide93
+description: >-
+  Windows x64 Panacea add-on that caches repeated asset-size queries for all
+  supported file paths. Replaces KH2 Riku Performance Fix; do not install both.
+game: kh2
+assets:
+- name: dll/KH2AssetSizeCache.dll
+  platform: pc
+  method: copy
+  source:
+  - name: KH2AssetSizeCache.dll
